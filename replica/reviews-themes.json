@@ -1,0 +1,31 @@
+{
+  "request_patterns": [
+    "\\bi wish\\b",
+    "\\bplease add\\b",
+    "\\bwould be (nice|great|good|helpful)\\b",
+    "\\bwould love\\b",
+    "\\bneeds? (a|an|the|to|more)\\b",
+    "\\bno way to\\b",
+    "\\bthere'?s no (way|option)\\b",
+    "\\b(can'?t|cannot|unable to) (even )?(add|change|edit|set|choose|export|import|customi[sz]e|connect|undo|delete|turn off)\\b",
+    "\\b(missing|lacks|lacking)\\b",
+    "\\bdoesn'?t (have|support|let|allow)\\b",
+    "\\bif only\\b",
+    "\\bfeature request\\b",
+    "\\bwhy (can'?t|isn'?t|doesn'?t)\\b"
+  ],
+  "themes": [
+    {"id": "privacy-cloud", "label": "Privacy and cloud uploads", "kind": "complaint",
+     "patterns": ["\\bprivacy\\b", "\\bsensitive\\b", "\\bcloud-first\\b", "\\bupload(s|ing)?\\b", "\\bpublic(ly)?\\b", "\\bprntscr\\b", "\\bscreenshot(s)? (available|public)"]},
+    {"id": "capture-workflow", "label": "Capture workflow friction", "kind": "complaint",
+     "patterns": ["\\bshortcut\\b", "\\bimmediately\\b", "\\bauto.?save\\b", "\\bclipboard\\b", "\\bnumerically incrementing\\b", "\\bpress printscr\\b", "\\bfaff\\b", "\\bno arrows\\b", "\\bstraight lines\\b"]},
+    {"id": "platforms-hdr", "label": "Platform, HDR and availability limits", "kind": "request",
+     "patterns": ["\\bwindows\\b", "\\bmac\\b", "\\blinux\\b", "\\bhdr\\b", "\\bplatform\\b", "\\bcross-platform\\b", "\\boffline\\b"]},
+    {"id": "annotations", "label": "Annotation usability", "kind": "request",
+     "patterns": ["\\bannotat", "\\barrows?\\b", "\\blines?\\b", "\\bboxes\\b", "\\btext\\b", "\\bhighlight"]},
+    {"id": "alternatives", "label": "Switching to alternatives", "kind": "complaint",
+     "patterns": ["\\bswitch", "\\balternative\\b", "\\bmove to\\b", "\\bsettled on\\b", "\\bcomparing\\b", "\\breplaced\\b", "\\bused to use\\b"]},
+    {"id": "cloud-only", "label": "Cloud-only upload target", "kind": "complaint",
+     "patterns": ["\\bonly (upload|save)\\b", "\\bother services\\b", "\\bprntscr\\.com\\b", "\\bnot suitable\\b"]}
+  ]
+}

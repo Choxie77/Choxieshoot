@@ -1,0 +1,53 @@
+Choxieshoot v1.6 final results Thu Nov  5 19:20:28 +07 2026
+=== --selftest ===
+selftest: captured 1470x956 pt (2940x1912 px) -> /tmp/choxieshoot-selftest-capture.png
+selftest: undo/redo ok
+selftest: composite 2940x1912 px -> /tmp/choxieshoot-selftest-composite.png (ok)
+exit:0
+=== --capturetest ===
+preflight=1 image=yes size=1470x956 blank=0
+exit:0
+=== --ocrselftest ===
+ocrselftest recognized: Choxieshoot OCR test | Order #12345
+ocrselftest: ok
+ocrselftest: two-column order ok (left top  right top | left bottom  right bottom)
+ocrselftest: no-text screenshot ok (0 chars)
+ocrselftest: screen capture OCR (697 chars): 00  = =  M . |  8  M  +  Ask Gemini | →  Ask Google or type a URL  1a  ロ  咽  <> | 㗊 | Gmail Images | Google | Ready when you are | +  Ask Google  C Al Mode | Cr…
+exit:0
+=== --ocrflowtest ===
+ocrflowtest clipboard: Clipboard OCR 98765
+second line
+ocrflowtest: ok
+exit:0
+=== --drawtest ===
+drawtest: drew=1 pixelRed=1 undo=1 pixelCleared=1 redo=1 erase=1 restore=1 -> ok
+exit:0
+=== --textedittest ===
+textedittest: editor=1 committed=1 -> ok
+exit:0
+=== --copytest ===
+copytest: pasteboard images=1 -> ok
+exit:0
+=== --savetest ===
+savetest: wrote=1 bytes=12075 png=1 -> ok
+exit:0
+=== --uitest ===
+uitest: editor window 640x504 created and shown
+exit:0
+=== --uitestwide ===
+uitestwide: editor window 1000x492 created and shown
+exit:0
+=== --uitestcolor ===
+uitestcolor: editor window 860x624 with color inspector shown
+exit:0
+=== --uitesttext ===
+uitesttext: editor window 860x624 with text panel and sample text
+exit:0
+=== --flowtest ===
+flowtest: captured region and opened editor
+exit:0
+=== --overlaytest ===
+overlaytest: selection overlay shown for ~3s
+exit:0
+=== stress ===
+4 overlay + 3 flow failures: 0

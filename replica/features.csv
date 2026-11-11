@@ -1,0 +1,41 @@
+feature,area,priority,original,clone,notes
+Menu-bar agent with no Dock icon,shell,must,yes,yes,LSUIElement app
+Global capture hotkey,shell,must,yes,yes,fixed ⌘⇧2
+Full-screen dimmed area selection with crosshair,selection,must,yes,yes,
+Live selection dimensions,selection,should,yes,yes,badge on overlay and canvas
+Floating annotation editor,editor,must,yes,yes,opens next to the capture
+Pencil tool,annotate,must,yes,yes,
+Line tool,annotate,must,yes,yes,
+Arrow tool,annotate,must,yes,yes,
+Rectangle tool,annotate,must,yes,yes,
+Ellipse tool,annotate,must,yes,yes,
+Text tool,annotate,must,yes,yes,
+Highlighter/marker tool,annotate,should,yes,yes,
+Colour palette,annotate,must,yes,yes,8 swatches + colour well
+Stroke width control,annotate,should,yes,yes,1-20 px
+Undo,annotate,must,yes,yes,snapshot history incl. eraser
+Redo,annotate,could,no,yes,added in v1.1
+Eraser tool,annotate,should,yes,yes,
+Eyedropper colour picker,annotate,should,yes,yes,
+Save as PNG,save,must,yes,yes,
+Copy annotated image to clipboard,save,must,yes,yes,
+Save and copy in one action,save,could,no,yes,added in v1.2 (checkbox)
+Retina-aware capture,capture,must,yes,yes,2x pixels preserved
+Multi-display capture,capture,should,yes,partial,overlay spans all screens; tested on primary
+Keyboard shortcuts,shell,should,yes,yes,⌘S ⌘C ⇧⌘C ⌘Z ⇧⌘Z Esc
+Configurable hotkey,preferences,should,yes,no,fixed shortcut; no preferences window
+Preferences window,preferences,should,yes,no,not built yet
+Print,print,should,yes,no,not scoped for v1.2
+Share sheet,share,should,yes,partial,macOS share sheet instead of per-network buttons
+Upload to prntscr.com and short link,cloud,could,yes,skip,original's private service; not cloned
+Cloud gallery and login,cloud,could,yes,skip,account service; not cloned
+Search visually similar images,cloud,could,yes,skip,remote service; not cloned
+OCR copy text from screenshot,accessibility,could,no,yes,added in v1.1 (Vision)
+Local-only privacy (no uploads),privacy,could,no,yes,no network code; screenshots stay local
+Delayed capture (3 s),capture,could,no,yes,added in v1.2 menu item
+Dock app with launcher window,shell,could,no,yes,added in v1.3
+App menu and Dock menu,shell,could,no,yes,added in v1.3
+Full-screen capture,capture,should,yes,yes,menu/launcher
+New screenshot button in editor,shell,could,no,yes,added in v1.3 (toolbar + ⌘N)
+Eyedropper colour values (HEX/RGB/HSB/HSL),annotate,could,no,yes,added in v1.3 (inspector)
+Guided Screen Recording onboarding,onboarding,should,yes,yes,status card + grant/check

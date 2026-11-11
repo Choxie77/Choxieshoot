@@ -1,0 +1,26 @@
+{
+  "_about": "Choxieshoot light-mode tokens, mirroring the dynamic colours in CSTheme.m.",
+  "mode": "light",
+  "color": {
+    "bg": "#ececec",
+    "surface": "#f5f5f5",
+    "border": "#d1d1d6",
+    "border-input": "#76767c",
+    "text": "#1c1c1e",
+    "text-muted": "#5c5c61",
+    "accent": "#0e7f72",
+    "on-accent": "#ffffff",
+    "danger": "#ff3b30",
+    "success": "#248a3d"
+  },
+  "pairs": [
+    ["text", "bg"],
+    ["text", "surface"],
+    ["text-muted", "bg"],
+    ["text-muted", "surface"],
+    ["on-accent", "accent"],
+    ["accent", "surface", "ui"],
+    ["danger", "surface", "ui"],
+    ["border-input", "surface", "ui"]
+  ]
+}

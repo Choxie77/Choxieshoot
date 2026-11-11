@@ -1,0 +1,68 @@
+/* Choxieshoot design tokens (replica-design output).
+   The shipping app is native AppKit; CSTheme.{h,m} maps these roles to
+   dynamic NSColors. This stylesheet documents the same tokens for design
+   tooling and any future web surface. */
+
+:root {
+  color-scheme: light dark;
+
+  /* Light mode */
+  --color-bg: #ececec;
+  --color-surface: #f5f5f5;
+  --color-border: #d1d1d6;
+  --color-border-input: #76767c;
+  --color-text: #1c1c1e;
+  --color-text-muted: #5c5c61;
+  --color-accent: #0e7f72;
+  --color-on-accent: #ffffff;
+  --color-danger: #ff3b30;
+  --color-success: #248a3d;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+
+  --shadow-window: 0 12px 32px rgba(0, 0, 0, 0.35);
+  --shadow-toast: 0 2px 10px rgba(0, 0, 0, 0.25);
+
+  --motion-fast: 120ms;
+  --motion-base: 160ms;
+  --ease: ease-out;
+
+  --font-sans: "SF Pro Text", -apple-system, system-ui, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, Menlo, monospace;
+
+  --type-xs: 10px/14px;
+  --type-sm: 12px/16px;
+  --type-base: 14px/20px;
+  --type-lg: 16px/22px;
+  --type-xl: 18px/24px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #1e1e1e;
+    --color-surface: #2c2c2e;
+    --color-border: #3a3a3c;
+    --color-border-input: #8e8e93;
+    --color-text: #f2f2f7;
+    --color-text-muted: #b8b8bd;
+    --color-accent: #35c3ae;
+    --color-on-accent: #052924;
+    --color-danger: #ff453a;
+    --color-success: #32d74b;
+  }
+}
+
+/* WCAG (checked with replica-design/contrast.py):
+   dark  text/bg 14.94  text/surface 12.49  muted/surface 7.05
+         on-accent/accent 7.09  accent/surface 6.35 (UI)
+   light text/bg 14.40  text/surface 15.61  muted/surface 6.10
+         on-accent/accent 4.89  accent/surface 4.48 (UI)
+   All pairs pass AA; zero failures in both modes. */

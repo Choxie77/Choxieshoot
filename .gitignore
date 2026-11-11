@@ -1,0 +1,21 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon\r\r
+
+# Build products
+build/
+*.app
+*.zip
+*.dSYM/
+
+# Xcode / dev
+xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcuserdatad/
+*.xcuserstate
+DerivedData/
+
+# Temporary / test files
+/tmp/choxieshoot-*

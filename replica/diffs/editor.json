@@ -1,0 +1,33 @@
+{
+  "mode": "layout",
+  "original": {
+    "width": 800,
+    "height": 500
+  },
+  "clone": {
+    "width": 2940,
+    "height": 1912
+  },
+  "compared_at": {
+    "width": 480,
+    "height": 300
+  },
+  "height_delta_pct": 4.0,
+  "score": 16.8,
+  "verdict": "different",
+  "regions": [
+    {
+      "x": 0,
+      "y": 0,
+      "w": 600,
+      "h": 500,
+      "cells": 43,
+      "where": "middle centre"
+    }
+  ],
+  "files": {
+    "original": "replica/screens/lightshot-editor.png",
+    "clone": "replica/clone-screens/final-flow.png"
+  },
+  "diff_image": "replica/diffs/editor-lightshot-vs-clone.png"
+}
