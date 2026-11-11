@@ -10,24 +10,49 @@
           destinationURL:(NSURL *)destinationURL
          progressHandler:(nullable void (^)(float progress))progressHandler
               completion:(void (^)(BOOL success, NSError * _Nullable error))completion {
-    if (sourceURL == nil || destinationURL == nil) {
-        if (completion) {
-            NSError *err = [NSError errorWithDomain:@"com.choxieshoot.videoeditor"
-                                               code:400
-                                           userInfo:@{NSLocalizedDescriptionKey: @"Source or destination URL is nil."}];
-            completion(NO, err);
+    [self exportVideoAtURL:sourceURL
+             trimStartTime:startTime
+               trimEndTime:endTime
+                  cropRect:cropPixelRect
+            destinationURL:destinationURL
+           progressHandler:progressHandler
+           completionQueue:dispatch_get_main_queue()
+                completion:completion];
+}
+
++ (void)exportVideoAtURL:(NSURL *)sourceURL
+           trimStartTime:(NSTimeInterval)startTime
+             trimEndTime:(NSTimeInterval)endTime
+                cropRect:(CGRect)cropPixelRect
+          destinationURL:(NSURL *)destinationURL
+         progressHandler:(nullable void (^)(float progress))progressHandler
+         completionQueue:(nullable dispatch_queue_t)completionQueue
+              completion:(void (^)(BOOL success, NSError * _Nullable error))completion {
+    void (^deliverCompletion)(BOOL, NSError *) = ^(BOOL success, NSError *error) {
+        if (!completion) return;
+        if (completionQueue != nil) {
+            dispatch_async(completionQueue, ^{
+                completion(success, error);
+            });
+        } else {
+            completion(success, error);
         }
+    };
+
+    if (sourceURL == nil || destinationURL == nil) {
+        NSError *err = [NSError errorWithDomain:@"com.choxieshoot.videoeditor"
+                                           code:400
+                                       userInfo:@{NSLocalizedDescriptionKey: @"Source or destination URL is nil."}];
+        deliverCompletion(NO, err);
         return;
     }
 
     NSFileManager *fm = [NSFileManager defaultManager];
     if (![fm fileExistsAtPath:sourceURL.path]) {
-        if (completion) {
-            NSError *err = [NSError errorWithDomain:@"com.choxieshoot.videoeditor"
-                                               code:404
-                                           userInfo:@{NSLocalizedDescriptionKey: @"Source video file not found."}];
-            completion(NO, err);
-        }
+        NSError *err = [NSError errorWithDomain:@"com.choxieshoot.videoeditor"
+                                           code:404
+                                       userInfo:@{NSLocalizedDescriptionKey: @"Source video file not found."}];
+        deliverCompletion(NO, err);
         return;
     }
 
@@ -36,9 +61,7 @@
     if (![fm fileExistsAtPath:parentDir.path]) {
         NSError *dirErr = nil;
         if (![fm createDirectoryAtURL:parentDir withIntermediateDirectories:YES attributes:nil error:&dirErr]) {
-            if (completion) {
-                completion(NO, dirErr);
-            }
+            deliverCompletion(NO, dirErr);
             return;
         }
     }
@@ -51,12 +74,10 @@
     AVURLAsset *asset = [AVURLAsset URLAssetWithURL:sourceURL options:nil];
     NSArray<AVAssetTrack *> *videoTracks = [asset tracksWithMediaType:AVMediaTypeVideo];
     if (videoTracks.count == 0) {
-        if (completion) {
-            NSError *err = [NSError errorWithDomain:@"com.choxieshoot.videoeditor"
-                                               code:422
-                                           userInfo:@{NSLocalizedDescriptionKey: @"No video track found in source video."}];
-            completion(NO, err);
-        }
+        NSError *err = [NSError errorWithDomain:@"com.choxieshoot.videoeditor"
+                                           code:422
+                                       userInfo:@{NSLocalizedDescriptionKey: @"No video track found in source video."}];
+        deliverCompletion(NO, err);
         return;
     }
 
@@ -103,9 +124,7 @@
         if (progressHandler) {
             progressHandler(1.0);
         }
-        if (completion) {
-            completion(ok, copyErr);
-        }
+        deliverCompletion(ok, copyErr);
         return;
     }
 
@@ -196,23 +215,19 @@
                 (long)exportSession.status, exportSession.error.localizedDescription.UTF8String ?: "none");
         dispatch_source_cancel(progressTimer);
 
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (exportSession.status == AVAssetExportSessionStatusCompleted) {
-                if (progressHandler) {
+        if (exportSession.status == AVAssetExportSessionStatusCompleted) {
+            if (progressHandler) {
+                dispatch_async(dispatch_get_main_queue(), ^{
                     progressHandler(1.0);
-                }
-                if (completion) {
-                    completion(YES, nil);
-                }
-            } else {
-                NSError *err = exportSession.error ?: [NSError errorWithDomain:@"com.choxieshoot.videoeditor"
-                                                                         code:500
-                                                                     userInfo:@{NSLocalizedDescriptionKey: @"Export session failed."}];
-                if (completion) {
-                    completion(NO, err);
-                }
+                });
             }
-        });
+            deliverCompletion(YES, nil);
+        } else {
+            NSError *err = exportSession.error ?: [NSError errorWithDomain:@"com.choxieshoot.videoeditor"
+                                                                     code:500
+                                                                 userInfo:@{NSLocalizedDescriptionKey: @"Export session failed."}];
+            deliverCompletion(NO, err);
+        }
     }];
 }
 
@@ -223,8 +238,8 @@
                      destinationURL:(NSURL *)destinationURL
                               error:(NSError * _Nullable * _Nullable)error {
     __block BOOL succeeded = NO;
-    __block BOOL finished = NO;
     __block NSError *exportErr = nil;
+    dispatch_semaphore_t sema = dispatch_semaphore_create(0);
 
     fprintf(stderr, "[VideoEditorEngine] Synchronous export requested\n");
     [self exportVideoAtURL:sourceURL
@@ -233,34 +248,15 @@
                   cropRect:cropPixelRect
             destinationURL:destinationURL
            progressHandler:nil
+           completionQueue:NULL
                 completion:^(BOOL success, NSError * _Nullable err) {
         fprintf(stderr, "[VideoEditorEngine] Synchronous completion invoked: success=%d\n", success);
         succeeded = success;
         exportErr = err;
-        finished = YES;
+        dispatch_semaphore_signal(sema);
     }];
 
-    if ([NSThread isMainThread]) {
-        while (!finished) {
-            @autoreleasepool {
-                if (NSApp != nil) {
-                    NSEvent *event = [NSApp nextEventMatchingMask:NSEventMaskAny
-                                                        untilDate:[NSDate dateWithTimeIntervalSinceNow:0.02]
-                                                           inMode:NSDefaultRunLoopMode
-                                                          dequeue:YES];
-                    if (event) {
-                        [NSApp sendEvent:event];
-                    }
-                } else {
-                    [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.02]];
-                }
-            }
-        }
-    } else {
-        while (!finished) {
-            [NSThread sleepForTimeInterval:0.01];
-        }
-    }
+    dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
     fprintf(stderr, "[VideoEditorEngine] Synchronous export returning: succeeded=%d\n", succeeded);
 
     if (!succeeded && error != NULL) {
