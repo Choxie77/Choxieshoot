@@ -1206,6 +1206,7 @@
 }
 
 - (void)showExportHUDWithTitle:(NSString *)title {
+    self.isExporting = YES;
     if (self.exportHUDView != nil) {
         [self.exportHUDView removeFromSuperview];
         self.exportHUDView = nil;
@@ -1276,9 +1277,6 @@
 }
 
 - (void)cancelActiveExport {
-    if (!self.isExporting) {
-        return;
-    }
     fprintf(stderr, "[VideoPreviewWindow] User cancelled active export\n");
     if (self.activeExportSession != nil) {
         [self.activeExportSession cancelExport];
