@@ -3,6 +3,7 @@
 NS_ASSUME_NONNULL_BEGIN
 
 @class EditorWindow;
+@class CanvasView;
 
 typedef void (^EditorWindowCloseBlock)(EditorWindow *window);
 
@@ -13,6 +14,8 @@ typedef void (^EditorWindowCloseBlock)(EditorWindow *window);
 
 @property (nonatomic, copy, nullable) EditorWindowCloseBlock onClose;
 @property (nonatomic) BOOL pinnedOnTop;
+@property (nonatomic, strong, readonly) CanvasView *canvasView;
+@property (nonatomic, readonly) BOOL ocrInProgress;
 
 - (void)minimizeWindow:(nullable id)sender;
 
@@ -23,6 +26,8 @@ typedef void (^EditorWindowCloseBlock)(EditorWindow *window);
 - (void)openTextRecognizerForTesting;
 - (void)openTextRecognizerWithCompletion:(nullable void (^)(BOOL foundText))completion;
 - (BOOL)isOCRBusyForTesting;
+- (void)cancelTextRecognition;
+- (void)toggleTextRecognizer;
 - (void)selectOCRBlockIndexesForTesting:(NSIndexSet *)indexes;
 - (void)selectOCRTextRangeForTesting:(NSRange)range;
 - (void)copySelectedOCRTextForTesting;

@@ -474,16 +474,29 @@ static const CGFloat kMinContentWidth = 640.0;
 
 - (void)keyDown:(NSEvent *)event {
     if (event.keyCode == 53) {
+        if (self.ocrInProgress) {
+            [self cancelTextRecognition];
+            return;
+        }
+        if (self.canvasView.currentTool == ToolTypeCrop) {
+            [self.canvasView clearPreviewAnnotation];
+            [self selectTool:ToolTypeSelect];
+            return;
+        }
         if (self.canvasView.ocrMode) {
             [self closeTextRecognizer];
-        } else if (self.canvasView.currentTool == ToolTypeColorPicker && self.canvasView.colorPickerLocked) {
+            return;
+        }
+        if (self.canvasView.currentTool == ToolTypeColorPicker && self.canvasView.colorPickerLocked) {
             self.canvasView.colorPickerLocked = NO;
             [self.colorInspector setLocked:NO animated:YES];
-        } else if (self.canvasView.selectedAnnotation != nil) {
-            [self.canvasView clearSelection];
-        } else {
-            [self close];
+            return;
         }
+        if (self.canvasView.selectedAnnotation != nil) {
+            [self.canvasView clearSelection];
+            return;
+        }
+        [self close];
         return;
     }
     if ([self.firstResponder isKindOfClass:[NSTextView class]]) {
@@ -658,7 +671,20 @@ static const CGFloat kMinContentWidth = 640.0;
     [self copyImage];
 }
 
+- (void)cancelTextRecognition {
+    if (!self.ocrInProgress) {
+        return;
+    }
+    self.ocrInProgress = NO;
+    [self.toolbarView setOCRBusy:NO];
+    [self showToast:@"Text recognition cancelled" duration:1.5];
+}
+
 - (void)toggleTextRecognizer {
+    if (self.ocrInProgress) {
+        [self cancelTextRecognition];
+        return;
+    }
     if (self.canvasView.ocrMode) {
         [self closeTextRecognizer];
     } else {
@@ -732,7 +758,7 @@ static const CGFloat kMinContentWidth = 640.0;
         NSTimeInterval remaining = MAX(0.0, minLoadingDuration - elapsed);
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(remaining * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             __strong typeof(weakSelf) strongSelf = weakSelf;
-            if (strongSelf == nil) {
+            if (strongSelf == nil || !strongSelf.ocrInProgress) {
                 return;
             }
             strongSelf.ocrInProgress = NO;
@@ -1002,6 +1028,7 @@ static const CGFloat kMinContentWidth = 640.0;
     if (self.canvasView.ocrMode) {
         [self closeTextRecognizer];
     }
+    [self selectTool:ToolTypeSelect];
 
     NSSize displaySize = self.canvasView.bounds.size;
     NSScreen *targetScreen = [self screenContainingRect:self.frame];
@@ -1193,6 +1220,7 @@ static const CGFloat kMinContentWidth = 640.0;
         return;
     }
     self.didCleanUp = YES;
+    self.ocrInProgress = NO;
 
     [self.toastField removeFromSuperview];
     self.toastField = nil;

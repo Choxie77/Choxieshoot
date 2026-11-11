@@ -165,7 +165,7 @@
     task.arguments = @[@"--ocr-worker", tempPath];
     NSPipe *outPipe = [NSPipe pipe];
     task.standardOutput = outPipe;
-    task.standardError = [NSPipe pipe];
+    task.standardError = [NSFileHandle fileHandleWithNullDevice];
 
     NSError *launchError = nil;
     if (![task launchAndReturnError:&launchError]) {
@@ -173,9 +173,24 @@
         return nil;
     }
 
-    NSData *outData = [[outPipe fileHandleForReading] readDataToEndOfFile];
-    [task waitUntilExit];
+    dispatch_semaphore_t sema = dispatch_semaphore_create(0);
+    __block NSData *outData = nil;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        outData = [[outPipe fileHandleForReading] readDataToEndOfFile];
+        [task waitUntilExit];
+        dispatch_semaphore_signal(sema);
+    });
+
+    intptr_t timedOut = dispatch_semaphore_wait(sema, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8.0 * NSEC_PER_SEC)));
     [[NSFileManager defaultManager] removeItemAtPath:tempPath error:NULL];
+
+    if (timedOut != 0) {
+        fprintf(stderr, "[TextRecognizer] Worker timed out after 8s, terminating task...\n");
+        @try {
+            [task terminate];
+        } @catch (NSException *e) {}
+        return nil;
+    }
 
     if (task.terminationStatus != 0 || outData.length == 0) {
         return nil;

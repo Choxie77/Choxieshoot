@@ -14,6 +14,9 @@
 #import "VideoRecorder.h"
 #import "RecordingControlWindow.h"
 #import "VideoPreviewWindow.h"
+#import "EditorWindow.h"
+#import "VideoCropOverlayView.h"
+#import "VideoEditorEngine.h"
 
 static BOOL ImageLooksBlank(NSImage *image) {
     CGImageRef cg = [image CGImageForProposedRect:NULL context:NULL hints:NULL];
@@ -947,16 +950,78 @@ static int RunVideoTest(void) {
                 BOOL cropDimensionsOK = (fabs(editedSize.width) == 320 && fabs(editedSize.height) == 240);
                 BOOL trimDurationOK = (editedDur > 0.3 && editedDur < 0.9);
 
-                // Verify reloading video in editor
+                // 5. Verify Advanced Cropper: Center Crop and Swap Orientation
+                [preview centerCropClicked:nil];
+                CGRect centeredCrop = preview.cropPixelRect;
+                BOOL centerCropOK = (centeredCrop.size.width == 320 && centeredCrop.size.height == 240);
+
+                [preview swapOrientationClicked:nil];
+                CGRect swappedCrop = preview.cropPixelRect;
+                BOOL swapAspectOK = (swappedCrop.size.width == 240 && swappedCrop.size.height == 320);
+
+                // Reset back to 320x240 for remaining tests
+                [preview setCropPixelRect:CGRectMake(20, 20, 320, 240)];
+
+                // 6. Verify Video Rotation (90° CW)
+                [preview setRotationDegrees:90];
+                NSURL *rotatedURL = [NSURL fileURLWithPath:@"/tmp/choxieshoot-videotest-rotated.mp4"];
+                [[NSFileManager defaultManager] removeItemAtURL:rotatedURL error:nil];
+                BOOL rotSaveOK = [preview saveVideoToURL:rotatedURL error:nil];
+
+                AVURLAsset *rotAsset = [AVURLAsset URLAssetWithURL:rotatedURL options:nil];
+                NSArray<AVAssetTrack *> *rotTracks = [rotAsset tracksWithMediaType:AVMediaTypeVideo];
+                CGSize rotSize = CGSizeZero;
+                if (rotTracks.count > 0) {
+                    rotSize = CGSizeApplyAffineTransform(rotTracks.firstObject.naturalSize, rotTracks.firstObject.preferredTransform);
+                }
+                BOOL rotationOK = rotSaveOK && (fabs(rotSize.width) == 240 && fabs(rotSize.height) == 320);
+
+                // 7. Verify Playback Speed (1.5x) and Audio Muting
+                [preview setRotationDegrees:0];
+                [preview setPlaybackSpeed:1.5];
+                [preview setAudioMuted:YES];
+
+                NSURL *speedMuteURL = [NSURL fileURLWithPath:@"/tmp/choxieshoot-videotest-speedmute.mp4"];
+                [[NSFileManager defaultManager] removeItemAtURL:speedMuteURL error:nil];
+                BOOL speedMuteSaveOK = [preview saveVideoToURL:speedMuteURL error:nil];
+
+                AVURLAsset *speedAsset = [AVURLAsset URLAssetWithURL:speedMuteURL options:nil];
+                Float64 speedDur = CMTimeGetSeconds(speedAsset.duration);
+                NSArray<AVAssetTrack *> *audioTracks = [speedAsset tracksWithMediaType:AVMediaTypeAudio];
+                BOOL speedOK = speedMuteSaveOK && (speedDur > 0.25 && speedDur < 0.60);
+                BOOL muteOK = speedMuteSaveOK && (audioTracks.count == 0);
+
+                // 8. Verify Animated GIF Export
+                NSURL *gifURL = [NSURL fileURLWithPath:@"/tmp/choxieshoot-videotest.gif"];
+                [[NSFileManager defaultManager] removeItemAtURL:gifURL error:nil];
+                BOOL gifSaveOK = [preview saveGifToURL:gifURL error:nil];
+
+                NSData *gifData = [NSData dataWithContentsOfURL:gifURL];
+                BOOL gifValid = NO;
+                if (gifData.length >= 6) {
+                    const char *header = (const char *)gifData.bytes;
+                    gifValid = (strncmp(header, "GIF89a", 6) == 0 || strncmp(header, "GIF87a", 6) == 0);
+                }
+                BOOL gifOK = gifSaveOK && gifValid && (gifData.length > 500);
+
+                // 9. Verify Still Frame Capture
+                NSImage *stillFrame = [preview currentFrameImage];
+                BOOL frameCaptureOK = (stillFrame != nil && stillFrame.size.width >= 100 && stillFrame.size.height >= 100);
+
+                // 10. Verify reloading video in editor
                 BOOL reloadOK = [preview loadVideoURL:editedURL];
 
                 [preview close];
 
-                BOOL allOK = modeInitOK && modeToggleOK && started && hasFtyp && hasVideoTrack && copyOK && saveOK && autoExtOK && fileWithExtExists && buttonsNoOverlap && editSaveOK && cropDimensionsOK && trimDurationOK && reloadOK;
-                printf("videotest: modeToggle=%d started=%d bytes=%lu ftyp=%d videoTrack=%d copy=%d save=%d autoExt=%d noOverlap=%d cutCropSave=%d cropSize=%.0fx%.0f dur=%.2fs reload=%d -> %s\n",
+                BOOL allOK = modeInitOK && modeToggleOK && started && hasFtyp && hasVideoTrack && copyOK && saveOK && autoExtOK && fileWithExtExists && buttonsNoOverlap && editSaveOK && cropDimensionsOK && trimDurationOK && centerCropOK && swapAspectOK && rotationOK && speedOK && muteOK && gifOK && frameCaptureOK && reloadOK;
+                printf("videotest: modeToggle=%d started=%d bytes=%lu ftyp=%d videoTrack=%d copy=%d save=%d autoExt=%d noOverlap=%d cutCropSave=%d cropSize=%.0fx%.0f dur=%.2fs centerCrop=%d swapAspect=%d rotation=%d (%.0fx%.0f) speed=%.2fs mute=%d gif=%d (%lu bytes) frame=%d (%.0fx%.0f) reload=%d -> %s\n",
                        (modeInitOK && modeToggleOK), started, (unsigned long)mp4Data.length,
                        hasFtyp, hasVideoTrack, copyOK, saveOK, (autoExtOK && fileWithExtExists), buttonsNoOverlap,
-                       editSaveOK, fabs(editedSize.width), fabs(editedSize.height), editedDur, reloadOK,
+                       editSaveOK, fabs(editedSize.width), fabs(editedSize.height), editedDur,
+                       centerCropOK, swapAspectOK, rotationOK, fabs(rotSize.width), fabs(rotSize.height),
+                       speedDur, muteOK, gifOK, (unsigned long)gifData.length,
+                       frameCaptureOK, stillFrame.size.width, stillFrame.size.height,
+                       reloadOK,
                        allOK ? "ok" : "FAILED");
                 exit(allOK ? 0 : 4);
             }];
@@ -964,6 +1029,283 @@ static int RunVideoTest(void) {
 
         [app run];
         return 0;
+    }
+}
+
+static int RunCropEditTest(void) {
+    @autoreleasepool {
+        printf("--- Starting CropEditTest ---\n");
+
+        // 1. VideoCropOverlayView: test single click and degenerate drag resilience
+        VideoCropOverlayView *overlay = [[VideoCropOverlayView alloc] initWithFrame:NSMakeRect(0, 0, 640, 360)
+                                                                  videoNaturalSize:NSMakeSize(1280, 720)];
+        overlay.cropActive = YES;
+        CGRect fullRect = overlay.pixelCropRect;
+        BOOL initFullOK = (fullRect.size.width == 1280 && fullRect.size.height == 720);
+
+        // Simulate single click at (50, 50) outside any handle
+        NSEvent *downEvent = [NSEvent mouseEventWithType:NSEventTypeLeftMouseDown
+                                                location:NSMakePoint(50, 50)
+                                           modifierFlags:0
+                                               timestamp:0
+                                            windowNumber:0
+                                                 context:nil
+                                             eventNumber:1
+                                              clickCount:1
+                                                pressure:1.0];
+        [overlay mouseDown:downEvent];
+
+        // Immediate mouseUp without drag: previously this collapsed the crop box to a 32x32 speck!
+        NSEvent *upEvent = [NSEvent mouseEventWithType:NSEventTypeLeftMouseUp
+                                              location:NSMakePoint(50, 50)
+                                         modifierFlags:0
+                                             timestamp:0
+                                          windowNumber:0
+                                               context:nil
+                                           eventNumber:2
+                                            clickCount:1
+                                              pressure:0.0];
+        [overlay mouseUp:upEvent];
+
+        CGRect afterClickRect = overlay.pixelCropRect;
+        BOOL singleClickRestored = (afterClickRect.size.width == 1280 && afterClickRect.size.height == 720);
+
+        // Set an explicit crop box (e.g. 640x360)
+        [overlay setPixelCropRect:CGRectMake(100, 100, 640, 360)];
+        CGRect setCrop = overlay.pixelCropRect;
+        BOOL cropSetOK = (setCrop.size.width == 640 && setCrop.size.height == 360);
+
+        // Simulate tiny jitter click (less than 4% dimension)
+        [overlay mouseDown:downEvent];
+        [overlay mouseUp:upEvent];
+        CGRect afterJitterRect = overlay.pixelCropRect;
+        BOOL jitterRestored = (afterJitterRect.size.width == 640 && afterJitterRect.size.height == 360);
+
+        // 2. CanvasView: test preview annotation clearing and tool switching on crop
+        CanvasView *canvas = [[CanvasView alloc] initWithFrame:NSMakeRect(0, 0, 500, 400)];
+        NSImage *img = [[NSImage alloc] initWithSize:NSMakeSize(500, 400)];
+        [img lockFocus];
+        [[NSColor blueColor] setFill];
+        NSRectFill(NSMakeRect(0, 0, 500, 400));
+        [img unlockFocus];
+        canvas.backgroundImage = img;
+
+        Annotation *realAnn = [[Annotation alloc] init];
+        realAnn.toolType = ToolTypeRectangle;
+        realAnn.path = [NSBezierPath bezierPathWithRect:NSMakeRect(10, 10, 50, 50)];
+        [canvas addAnnotation:realAnn];
+        BOOL hasReal = (canvas.annotations.count == 1);
+
+        canvas.currentTool = ToolTypeCrop;
+        [canvas clearPreviewAnnotation];
+        BOOL clearPreviewOK = (canvas.annotations.count == 1);
+
+        // Perform crop
+        [canvas cropToRect:NSMakeRect(20, 20, 300, 200)];
+        BOOL toolSwitchedToSelect = (canvas.currentTool == ToolTypeSelect);
+
+        BOOL allOK = initFullOK && singleClickRestored && cropSetOK && jitterRestored && hasReal && clearPreviewOK && toolSwitchedToSelect;
+        printf("cropedittest: initFull=%d singleClickRestored=%d cropSet=%d jitterRestored=%d hasReal=%d clearPreview=%d toolSwitched=%d -> %s\n",
+               initFullOK, singleClickRestored, cropSetOK, jitterRestored, hasReal, clearPreviewOK, toolSwitchedToSelect,
+               allOK ? "ok" : "FAILED");
+        return allOK ? 0 : 1;
+    }
+}
+
+static int RunExportTimeoutTest(void) {
+    @autoreleasepool {
+        printf("--- Starting ExportTimeoutTest ---\n");
+
+        // Verify test video exists or create one
+        NSURL *testVideoURL = [NSURL fileURLWithPath:@"/tmp/choxieshoot-videotest.mp4"];
+        if (![[NSFileManager defaultManager] fileExistsAtPath:testVideoURL.path]) {
+            RunVideoTest();
+        }
+
+        // 1. Test active cancellation of VideoEditorEngine exportVideoAtURL
+        NSURL *cancelVideoURL = [NSURL fileURLWithPath:@"/tmp/choxieshoot-test-cancel.mp4"];
+        [[NSFileManager defaultManager] removeItemAtURL:cancelVideoURL error:nil];
+
+        dispatch_semaphore_t sema1 = dispatch_semaphore_create(0);
+        __block BOOL cancelVideoCompleted = NO;
+        __block BOOL cancelVideoSucceeded = YES;
+        __block NSError *cancelVideoErr = nil;
+
+        AVAssetExportSession *session = [VideoEditorEngine exportVideoAtURL:testVideoURL
+                                                              trimStartTime:0.0
+                                                                trimEndTime:0.5
+                                                                   cropRect:CGRectMake(10, 10, 200, 150)
+                                                                   rotation:0
+                                                              playbackSpeed:1.0
+                                                                  muteAudio:NO
+                                                             destinationURL:cancelVideoURL
+                                                            progressHandler:nil
+                                                            completionQueue:dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0)
+                                                                 completion:^(BOOL success, NSError * _Nullable error) {
+            cancelVideoCompleted = YES;
+            cancelVideoSucceeded = success;
+            cancelVideoErr = error;
+            dispatch_semaphore_signal(sema1);
+        }];
+
+        // Immediately cancel export
+        [session cancelExport];
+        dispatch_semaphore_wait(sema1, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)));
+
+        BOOL videoCancelOK = cancelVideoCompleted && !cancelVideoSucceeded &&
+            (cancelVideoErr != nil && cancelVideoErr.code == NSUserCancelledError);
+        BOOL videoFileCleaned = ![[NSFileManager defaultManager] fileExistsAtPath:cancelVideoURL.path];
+
+        // 2. Test active cancellation of VideoEditorEngine exportGifAtURL
+        NSURL *cancelGifURL = [NSURL fileURLWithPath:@"/tmp/choxieshoot-test-cancel.gif"];
+        [[NSFileManager defaultManager] removeItemAtURL:cancelGifURL error:nil];
+
+        dispatch_semaphore_t sema2 = dispatch_semaphore_create(0);
+        __block BOOL cancelGifCompleted = NO;
+        __block BOOL cancelGifSucceeded = YES;
+        __block NSError *cancelGifErr = nil;
+
+        void (^cancelBlock)(void) = [VideoEditorEngine exportGifAtURL:testVideoURL
+                                                        trimStartTime:0.0
+                                                          trimEndTime:0.5
+                                                             cropRect:CGRectMake(10, 10, 200, 150)
+                                                             rotation:0
+                                                        playbackSpeed:1.0
+                                                                  fps:15.0
+                                                       destinationURL:cancelGifURL
+                                                      progressHandler:nil
+                                                      completionQueue:dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0)
+                                                           completion:^(BOOL success, NSError * _Nullable error) {
+            cancelGifCompleted = YES;
+            cancelGifSucceeded = success;
+            cancelGifErr = error;
+            dispatch_semaphore_signal(sema2);
+        }];
+
+        if (cancelBlock) {
+            cancelBlock();
+        }
+        dispatch_semaphore_wait(sema2, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)));
+
+        BOOL gifCancelOK = cancelGifCompleted && !cancelGifSucceeded &&
+            (cancelGifErr != nil && cancelGifErr.code == NSUserCancelledError);
+        BOOL gifFileCleaned = ![[NSFileManager defaultManager] fileExistsAtPath:cancelGifURL.path];
+
+        // 3. Test VideoPreviewWindow cancellation and HUD dismissal
+        VideoPreviewWindow *preview = [[VideoPreviewWindow alloc] initWithScreenRect:NSMakeRect(50, 50, 600, 400)
+                                                                           videoURL:testVideoURL];
+        [preview makeKeyAndOrderFront:nil];
+
+        BOOL notExportingInitial = !preview.isExporting;
+        [preview showExportHUDWithTitle:@"Testing HUD…"];
+        BOOL hudVisible = (preview.exportHUDView != nil);
+
+        [preview cancelActiveExport];
+        BOOL hudDismissed = (preview.exportHUDView == nil) && !preview.isExporting;
+
+        // Test close during simulated export
+        [preview showExportHUDWithTitle:@"Closing During Export…"];
+        [preview close];
+        BOOL closeCancelledOK = !preview.isExporting && (preview.exportHUDView == nil);
+
+        BOOL allOK = videoCancelOK && videoFileCleaned && gifCancelOK && gifFileCleaned &&
+                     notExportingInitial && hudVisible && hudDismissed && closeCancelledOK;
+        printf("exporttimeouttest: videoCancel=%d videoCleaned=%d gifCancel=%d gifCleaned=%d notExportingInit=%d hudVisible=%d hudDismissed=%d closeCancelled=%d -> %s\n",
+               videoCancelOK, videoFileCleaned, gifCancelOK, gifFileCleaned,
+               notExportingInitial, hudVisible, hudDismissed, closeCancelledOK,
+               allOK ? "ok" : "FAILED");
+        return allOK ? 0 : 2;
+    }
+}
+
+static int RunOCRCancelTest(void) {
+    @autoreleasepool {
+        printf("--- Starting OCRCancelTest ---\n");
+        NSImage *img = [[NSImage alloc] initWithSize:NSMakeSize(400, 300)];
+        [img lockFocus];
+        [[NSColor whiteColor] setFill];
+        NSRectFill(NSMakeRect(0, 0, 400, 300));
+        [@"Sample text for cancellation test" drawAtPoint:NSMakePoint(20, 150) withAttributes:@{
+            NSFontAttributeName: [NSFont systemFontOfSize:18.0]
+        }];
+        [img unlockFocus];
+
+        EditorWindow *editor = [[EditorWindow alloc] initWithScreenRect:NSMakeRect(100, 100, 500, 400) image:img];
+        [editor makeKeyAndOrderFront:nil];
+
+        // 1. Start OCR and cancel via cancelTextRecognition
+        [editor openTextRecognizerWithCompletion:nil];
+        BOOL ocrStarted = [editor ocrInProgress];
+
+        [editor cancelTextRecognition];
+        BOOL ocrCancelled = ![editor ocrInProgress];
+
+        // 2. Start OCR and cancel via toggleTextRecognizer (clicking OCR button again)
+        [editor openTextRecognizerWithCompletion:nil];
+        BOOL ocrStarted2 = [editor ocrInProgress];
+        [editor toggleTextRecognizer];
+        BOOL ocrToggleCancelled = ![editor ocrInProgress];
+
+        // 3. Start OCR and cancel via Escape key event
+        [editor openTextRecognizerWithCompletion:nil];
+        NSEvent *escEvent = [NSEvent keyEventWithType:NSEventTypeKeyDown
+                                             location:NSZeroPoint
+                                        modifierFlags:0
+                                            timestamp:0
+                                         windowNumber:editor.windowNumber
+                                              context:nil
+                                           characters:@"\e"
+                          charactersIgnoringModifiers:@"\e"
+                                            isARepeat:NO
+                                              keyCode:53];
+        [editor keyDown:escEvent];
+        BOOL escCancelledOCR = ![editor ocrInProgress];
+        BOOL windowStillVisible = editor.isVisible;
+
+        // 4. In crop tool mode, Escape key switches tool to Select instead of closing window
+        editor.canvasView.currentTool = ToolTypeCrop;
+        [editor keyDown:escEvent];
+        BOOL cropCancelledToSelect = (editor.canvasView.currentTool == ToolTypeSelect);
+        BOOL windowStillOpenAfterCropEsc = editor.isVisible;
+
+        [editor close];
+        BOOL closedCleanly = !editor.isVisible && ![editor ocrInProgress];
+
+        BOOL allOK = ocrStarted && ocrCancelled && ocrStarted2 && ocrToggleCancelled &&
+                     escCancelledOCR && windowStillVisible && cropCancelledToSelect && windowStillOpenAfterCropEsc && closedCleanly;
+        printf("ocrcanceltest: ocrStarted=%d ocrCancelled=%d toggleCancel=%d escCancel=%d winVisible=%d cropEscSelect=%d winOpen=%d closedClean=%d -> %s\n",
+               ocrStarted, ocrCancelled, ocrToggleCancelled, escCancelledOCR, windowStillVisible,
+               cropCancelledToSelect, windowStillOpenAfterCropEsc, closedCleanly,
+               allOK ? "ok" : "FAILED");
+        return allOK ? 0 : 3;
+    }
+}
+
+static int RunSelectionCancelTest(void) {
+    @autoreleasepool {
+        printf("--- Starting SelectionCancelTest ---\n");
+
+        __block BOOL cancelInvoked = NO;
+        SelectionWindow *sel = [[SelectionWindow alloc]
+            initWithInitialMode:CSCaptureModeScreenshot
+               recordMicrophone:NO
+                 modeCompletion:^(NSRect screenRect, CSCaptureMode mode, BOOL recordMicrophone) {}
+                         cancel:^{
+            cancelInvoked = YES;
+        }];
+
+        BOOL cancelNotYetInvoked = !cancelInvoked;
+
+        // Directly close the SelectionWindow without dragging (simulates user pressing Escape, or window close)
+        [sel close];
+
+        BOOL cancelInvokedOnClose = cancelInvoked;
+
+        BOOL allOK = cancelNotYetInvoked && cancelInvokedOnClose;
+        printf("selectioncanceltest: initNotCancelled=%d cancelInvokedOnClose=%d -> %s\n",
+               cancelNotYetInvoked, cancelInvokedOnClose,
+               allOK ? "ok" : "FAILED");
+        return allOK ? 0 : 4;
     }
 }
 
@@ -1026,6 +1368,18 @@ int main(int argc, const char *argv[]) {
         }
         if (argc > 1 && strcmp(argv[1], "--videotest") == 0) {
             return RunVideoTest();
+        }
+        if (argc > 1 && strcmp(argv[1], "--cropedittest") == 0) {
+            return RunCropEditTest();
+        }
+        if (argc > 1 && strcmp(argv[1], "--exporttimeouttest") == 0) {
+            return RunExportTimeoutTest();
+        }
+        if (argc > 1 && strcmp(argv[1], "--ocrcanceltest") == 0) {
+            return RunOCRCancelTest();
+        }
+        if (argc > 1 && strcmp(argv[1], "--selectioncanceltest") == 0) {
+            return RunSelectionCancelTest();
         }
         if (argc > 2 && strcmp(argv[1], "--edit-video") == 0) {
             NSString *videoPath = [NSString stringWithUTF8String:argv[2]];

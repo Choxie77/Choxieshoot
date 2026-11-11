@@ -639,9 +639,9 @@ static NSString *ToolTypeShortcutName(ToolType type) {
     _ocrBusy = busy;
     if (busy) {
         self.ocrButton.busy = YES;
-        self.ocrButton.enabled = NO;
+        self.ocrButton.enabled = YES;
         self.ocrButton.image = nil;
-        self.ocrButton.toolTip = @"Recognizing text…";
+        self.ocrButton.toolTip = @"Recognizing text… (Click to Cancel)";
         self.ocrLoadingView.frame = self.ocrButton.bounds;
         [self.ocrLoadingView startAnimating];
     } else {

@@ -27,8 +27,11 @@
 @property (nonatomic, strong) VideoCropOverlayView *cropOverlay;
 @property (nonatomic, strong) NSView *cropBar;
 @property (nonatomic, strong) NSSegmentedControl *aspectSegment;
-@property (nonatomic, strong) NSTextField *cropResolutionLabel;
+@property (nonatomic, strong) NSButton *cropSwapButton;
+@property (nonatomic, strong) NSButton *cropCenterButton;
 @property (nonatomic, strong) NSButton *cropFitButton;
+@property (nonatomic, strong) NSButton *cropPreviewButton;
+@property (nonatomic, strong) NSButton *cropResolutionButton;
 @property (nonatomic, strong) NSButton *cropDoneButton;
 
 @property (nonatomic, strong) VideoTimelineTrimmerView *timelineView;
@@ -37,7 +40,12 @@
 @property (nonatomic, strong) NSButton *recordNewButton;
 @property (nonatomic, strong) NSButton *openVideoButton;
 @property (nonatomic, strong) NSButton *cropButton;
+@property (nonatomic, strong) NSButton *rotateButton;
+@property (nonatomic, strong) NSButton *speedButton;
+@property (nonatomic, strong) NSButton *audioButton;
+@property (nonatomic, strong) NSButton *snapFrameButton;
 @property (nonatomic, strong) NSButton *resetEditsButton;
+@property (nonatomic, strong) NSButton *exportGifButton;
 @property (nonatomic, strong) NSButton *revealInFinderButton;
 @property (nonatomic, strong) NSButton *clipboardButton;
 @property (nonatomic, strong) NSButton *saveMP4Button;
@@ -51,6 +59,17 @@
 @property (nonatomic, readwrite) NSTimeInterval trimEndTime;
 @property (nonatomic, readwrite) CGRect cropPixelRect;
 @property (nonatomic, readwrite) BOOL cropModeActive;
+@property (nonatomic, readwrite) BOOL cropPreviewActive;
+@property (nonatomic, readwrite) NSInteger rotationDegrees;
+@property (nonatomic, readwrite) CGFloat playbackSpeed;
+@property (nonatomic, readwrite) BOOL audioMuted;
+
+@property (nonatomic) BOOL isExporting;
+@property (nonatomic, strong, nullable) AVAssetExportSession *activeExportSession;
+@property (nonatomic, copy, nullable) void (^activeExportCancelBlock)(void);
+@property (nonatomic, strong, nullable) NSView *exportHUDView;
+@property (nonatomic, strong, nullable) NSProgressIndicator *exportHUDProgress;
+@property (nonatomic, strong, nullable) NSTextField *exportHUDLabel;
 
 @end
 
@@ -60,6 +79,10 @@
     _videoURL = videoURL;
     _loopPlayback = YES;
     _cropModeActive = NO;
+    _cropPreviewActive = NO;
+    _rotationDegrees = 0;
+    _playbackSpeed = 1.0;
+    _audioMuted = NO;
 
     AVURLAsset *asset = [AVURLAsset URLAssetWithURL:videoURL options:nil];
     NSSize videoSize = screenRect.size;
@@ -91,8 +114,8 @@
     }
     NSRect visible = targetScreen != nil ? targetScreen.visibleFrame : NSMakeRect(0, 0, 1440, 900);
 
-    CGFloat maxVideoW = MAX(visible.size.width - 80.0, 480.0);
-    CGFloat maxVideoH = MAX(visible.size.height - 240.0, 240.0);
+    CGFloat maxVideoW = MAX(visible.size.width - 80.0, 520.0);
+    CGFloat maxVideoH = MAX(visible.size.height - 240.0, 260.0);
     CGFloat scale = 1.0;
     if (screenRect.size.width > 0 && screenRect.size.height > 0) {
         videoSize = screenRect.size;
@@ -105,10 +128,10 @@
     }
     scale = MAX(scale, 0.1);
 
-    NSSize displaySize = NSMakeSize(MAX(420.0, floor(videoSize.width * scale)),
-                                    MAX(240.0, floor(videoSize.height * scale)));
+    NSSize displaySize = NSMakeSize(MAX(480.0, floor(videoSize.width * scale)),
+                                    MAX(260.0, floor(videoSize.height * scale)));
 
-    CGFloat contentWidth = MAX(displaySize.width + 32.0, 780.0);
+    CGFloat contentWidth = MAX(displaySize.width + 32.0, 880.0);
     CGFloat headerHeight = 36.0;
     CGFloat timelineHeight = 56.0;
     CGFloat toolbarHeight = 50.0;
@@ -134,7 +157,7 @@
 
     self.title = @"Video Studio & Editor";
     self.miniwindowTitle = @"Video Editor";
-    self.minSize = NSMakeSize(680.0, 420.0);
+    self.minSize = NSMakeSize(760.0, 440.0);
     self.titlebarAppearsTransparent = YES;
     self.titleVisibility = NSWindowTitleHidden;
     self.floatingPanel = NO;
@@ -186,7 +209,7 @@
     self.statusBadge = [NSTextField labelWithString:@""];
     self.statusBadge.font = [NSFont systemFontOfSize:11 weight:NSFontWeightBold];
     self.statusBadge.textColor = [CSTheme accent];
-    self.statusBadge.frame = NSMakeRect(256, 8, 180, 18);
+    self.statusBadge.frame = NSMakeRect(256, 8, 220, 18);
     [self.headerBar addSubview:self.statusBadge];
 
     self.metaLabel = [NSTextField labelWithString:[self metadataSummaryForAsset:asset url:videoURL]];
@@ -194,7 +217,7 @@
     self.metaLabel.textColor = [CSTheme mutedText];
     self.metaLabel.alignment = NSTextAlignmentRight;
     self.metaLabel.autoresizingMask = NSViewMinXMargin;
-    self.metaLabel.frame = NSMakeRect(440, 8, contentWidth - 456.0, 18);
+    self.metaLabel.frame = NSMakeRect(480, 8, contentWidth - 496.0, 18);
     [self.headerBar addSubview:self.metaLabel];
 
     // Bottom action bar (at Y = 0)
@@ -213,7 +236,7 @@
     self.timelineView.autoresizingMask = NSViewWidthSizable | NSViewMaxYMargin;
     [container addSubview:self.timelineView];
 
-    // Player Container: fills the space between timeline top and header bottom
+    // Player Container
     CGFloat playerY = timelineY + timelineHeight + 8.0;
     CGFloat playerH = contentHeight - headerHeight - playerY - 6.0;
     self.playerContainer = [[NSView alloc] initWithFrame:NSMakeRect(16.0, playerY, contentWidth - 32.0, playerH)];
@@ -224,7 +247,7 @@
     self.playerContainer.layer.backgroundColor = [NSColor blackColor].CGColor;
     [container addSubview:self.playerContainer];
 
-    // Video player without conflicting Apple inline controls
+    // Video player
     self.player = [AVPlayer playerWithURL:videoURL];
     self.playerView = [[AVPlayerView alloc] initWithFrame:self.playerContainer.bounds];
     self.playerView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
@@ -249,7 +272,7 @@
         }
     };
 
-    // Crop Control Bar (floating glassmorphic strip at top of playerContainer)
+    // Crop Control Bar (floating glassmorphic strip inside playerContainer)
     [self setupCropBar];
 
     // Wire up timeline trimmer callbacks
@@ -278,6 +301,7 @@
             } else {
                 if (strongSelf.loopPlayback) {
                     [strongSelf.player play];
+                    strongSelf.player.rate = (float)strongSelf.playbackSpeed;
                     strongSelf.timelineView.isPlaying = YES;
                 }
             }
@@ -296,6 +320,7 @@
                 [strongSelf.player seekToTime:CMTimeMakeWithSeconds(strongSelf.trimStartTime, 600)];
             }
             [strongSelf.player play];
+            strongSelf.player.rate = (float)strongSelf.playbackSpeed;
             strongSelf.timelineView.isPlaying = YES;
         }
     };
@@ -316,6 +341,7 @@
                 CMTime loopStart = CMTimeMakeWithSeconds(strongSelf.trimStartTime, 600);
                 [strongSelf.player seekToTime:loopStart toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
                 [strongSelf.player play];
+                strongSelf.player.rate = (float)strongSelf.playbackSpeed;
             }
         }
     }];
@@ -330,17 +356,30 @@
                         CMTime loopStart = CMTimeMakeWithSeconds(strongSelf.trimStartTime, 600);
                         [strongSelf.player seekToTime:loopStart toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
                         [strongSelf.player play];
+                        strongSelf.player.rate = (float)strongSelf.playbackSpeed;
                     }
                 }];
 
+    [self updateAudioButtonAvailability];
     [self layoutToolbar];
     [self updateEditStatus];
 
     // Start playing
     [self.player play];
+    self.player.rate = (float)self.playbackSpeed;
     self.timelineView.isPlaying = YES;
 
     return self;
+}
+
+- (void)updateAudioButtonAvailability {
+    AVURLAsset *asset = [AVURLAsset URLAssetWithURL:self.videoURL options:nil];
+    BOOL hasAudio = ([asset tracksWithMediaType:AVMediaTypeAudio].count > 0);
+    self.audioButton.enabled = hasAudio;
+    if (!hasAudio) {
+        self.audioButton.title = @"No Audio";
+        self.audioButton.toolTip = @"Source video has no audio track";
+    }
 }
 
 - (void)setupBottomBarButtons {
@@ -362,11 +401,41 @@
                                      action:@selector(toggleCropMode:)];
     [self.bottomBar addSubview:self.cropButton];
 
-    self.resetEditsButton = [self buttonWithTitle:@"Reset Edits"
+    self.rotateButton = [self buttonWithTitle:@"Rotate"
+                                       symbol:@"rotate.right"
+                                      tooltip:@"Rotate video 90° clockwise (R)"
+                                       action:@selector(rotateClicked:)];
+    [self.bottomBar addSubview:self.rotateButton];
+
+    self.speedButton = [self buttonWithTitle:@"1.0×"
+                                      symbol:@"bolt.fill"
+                                     tooltip:@"Playback speed (0.5× – 2.0×)"
+                                      action:@selector(cycleSpeedClicked:)];
+    [self.bottomBar addSubview:self.speedButton];
+
+    self.audioButton = [self buttonWithTitle:@"Audio"
+                                      symbol:@"speaker.wave.2.fill"
+                                     tooltip:@"Toggle audio mute for playback and export (M)"
+                                      action:@selector(toggleMuteClicked:)];
+    [self.bottomBar addSubview:self.audioButton];
+
+    self.snapFrameButton = [self buttonWithTitle:@"Snap"
+                                          symbol:@"camera"
+                                         tooltip:@"Capture current still frame to clipboard (⌘⇧C)"
+                                          action:@selector(captureFrameClicked:)];
+    [self.bottomBar addSubview:self.snapFrameButton];
+
+    self.resetEditsButton = [self buttonWithTitle:@"Reset"
                                            symbol:@"arrow.uturn.backward"
-                                          tooltip:@"Reset trim cut and crop to original"
+                                          tooltip:@"Reset trim, crop, rotation, speed, and audio"
                                            action:@selector(resetEdits:)];
     [self.bottomBar addSubview:self.resetEditsButton];
+
+    self.exportGifButton = [self buttonWithTitle:@"GIF…"
+                                          symbol:@"film"
+                                         tooltip:@"Export trimmed & cropped clip as animated GIF (⌘G)"
+                                          action:@selector(exportGifClicked:)];
+    [self.bottomBar addSubview:self.exportGifButton];
 
     self.revealInFinderButton = [self buttonWithTitle:@"Finder"
                                               symbol:@"magnifyingglass"
@@ -401,47 +470,76 @@
 }
 
 - (void)setupCropBar {
-    CGFloat cropW = 560.0;
-    CGFloat cropH = 34.0;
+    CGFloat cropW = 660.0;
+    CGFloat cropH = 36.0;
     CGFloat playerW = NSWidth(self.playerContainer.bounds);
     CGFloat playerH = NSHeight(self.playerContainer.bounds);
 
     self.cropBar = [[NSView alloc] initWithFrame:NSMakeRect(floor((playerW - cropW) / 2.0), playerH - cropH - 10.0, cropW, cropH)];
     self.cropBar.autoresizingMask = NSViewMinXMargin | NSViewMaxXMargin | NSViewMinYMargin;
     self.cropBar.wantsLayer = YES;
-    self.cropBar.layer.backgroundColor = [[CSTheme elevatedSurface] colorWithAlphaComponent:0.92].CGColor;
+    self.cropBar.layer.backgroundColor = [[CSTheme elevatedSurface] colorWithAlphaComponent:0.94].CGColor;
     self.cropBar.layer.cornerRadius = CSRadiusSmall;
     self.cropBar.layer.borderWidth = 1.0;
     self.cropBar.layer.borderColor = [[CSTheme accent] colorWithAlphaComponent:0.75].CGColor;
     self.cropBar.hidden = YES;
     [self.playerContainer addSubview:self.cropBar];
 
-    NSArray *segments = @[@"Free", @"16:9", @"4:3", @"1:1", @"9:16", @"Original"];
+    NSArray *segments = @[@"Free", @"16:9", @"9:16", @"1:1", @"4:5", @"4:3", @"21:9", @"Orig"];
     self.aspectSegment = [NSSegmentedControl segmentedControlWithLabels:segments
                                                            trackingMode:NSSegmentSwitchTrackingSelectOne
                                                                  target:self
                                                                  action:@selector(aspectSegmentChanged:)];
     self.aspectSegment.segmentStyle = NSSegmentStyleTexturedRounded;
     self.aspectSegment.selectedSegment = 0;
-    self.aspectSegment.frame = NSMakeRect(10.0, 5.0, 310.0, 24.0);
+    self.aspectSegment.frame = NSMakeRect(8.0, 6.0, 310.0, 24.0);
     [self.cropBar addSubview:self.aspectSegment];
 
-    self.cropResolutionLabel = [NSTextField labelWithString:@"1920 × 1080 px"];
-    self.cropResolutionLabel.font = [NSFont monospacedDigitSystemFontOfSize:11.0 weight:NSFontWeightSemibold];
-    self.cropResolutionLabel.textColor = [CSTheme text];
-    self.cropResolutionLabel.frame = NSMakeRect(328.0, 7.0, 100.0, 18.0);
-    [self.cropBar addSubview:self.cropResolutionLabel];
+    // Flip orientation button
+    self.cropSwapButton = [NSButton buttonWithTitle:@"⇄" target:self action:@selector(swapOrientationClicked:)];
+    self.cropSwapButton.bezelStyle = NSBezelStyleInline;
+    self.cropSwapButton.font = [NSFont systemFontOfSize:13.0 weight:NSFontWeightBold];
+    self.cropSwapButton.toolTip = @"Swap width and height orientation (⇄)";
+    self.cropSwapButton.frame = NSMakeRect(324.0, 6.0, 30.0, 24.0);
+    [self.cropBar addSubview:self.cropSwapButton];
 
+    // Center crop button
+    self.cropCenterButton = [NSButton buttonWithTitle:@"⊙" target:self action:@selector(centerCropClicked:)];
+    self.cropCenterButton.bezelStyle = NSBezelStyleInline;
+    self.cropCenterButton.font = [NSFont systemFontOfSize:12.0 weight:NSFontWeightBold];
+    self.cropCenterButton.toolTip = @"Center crop box in video";
+    self.cropCenterButton.frame = NSMakeRect(358.0, 6.0, 30.0, 24.0);
+    [self.cropBar addSubview:self.cropCenterButton];
+
+    // Fit button
     self.cropFitButton = [NSButton buttonWithTitle:@"Fit" target:self action:@selector(cropFitClicked:)];
     self.cropFitButton.bezelStyle = NSBezelStyleInline;
     self.cropFitButton.font = [NSFont systemFontOfSize:11.0 weight:NSFontWeightMedium];
-    self.cropFitButton.frame = NSMakeRect(436.0, 5.0, 48.0, 24.0);
+    self.cropFitButton.toolTip = @"Reset crop to full video frame";
+    self.cropFitButton.frame = NSMakeRect(392.0, 6.0, 40.0, 24.0);
     [self.cropBar addSubview:self.cropFitButton];
 
+    // Live preview toggle button
+    self.cropPreviewButton = [NSButton buttonWithTitle:@"Preview" target:self action:@selector(toggleCropPreview:)];
+    self.cropPreviewButton.bezelStyle = NSBezelStyleInline;
+    self.cropPreviewButton.font = [NSFont systemFontOfSize:11.0 weight:NSFontWeightSemibold];
+    self.cropPreviewButton.toolTip = @"Preview cropped video framed in player";
+    self.cropPreviewButton.frame = NSMakeRect(436.0, 6.0, 60.0, 24.0);
+    [self.cropBar addSubview:self.cropPreviewButton];
+
+    // Resolution button / preset cycler
+    self.cropResolutionButton = [NSButton buttonWithTitle:@"1920×1080" target:self action:@selector(resolutionPresetClicked:)];
+    self.cropResolutionButton.bezelStyle = NSBezelStyleInline;
+    self.cropResolutionButton.font = [NSFont monospacedDigitSystemFontOfSize:11.0 weight:NSFontWeightSemibold];
+    self.cropResolutionButton.toolTip = @"Click to cycle standard resolution presets (1080p, 720p, 540p, Square)";
+    self.cropResolutionButton.frame = NSMakeRect(500.0, 6.0, 92.0, 24.0);
+    [self.cropBar addSubview:self.cropResolutionButton];
+
+    // Done button
     self.cropDoneButton = [NSButton buttonWithTitle:@"Done" target:self action:@selector(cropDoneClicked:)];
     self.cropDoneButton.bezelStyle = NSBezelStyleInline;
     self.cropDoneButton.font = [NSFont systemFontOfSize:11.0 weight:NSFontWeightBold];
-    self.cropDoneButton.frame = NSMakeRect(490.0, 5.0, 60.0, 24.0);
+    self.cropDoneButton.frame = NSMakeRect(596.0, 6.0, 52.0, 24.0);
     [self.cropBar addSubview:self.cropDoneButton];
 }
 
@@ -450,10 +548,12 @@
     CSVideoCropAspect aspect = CSVideoCropAspectFreeform;
     switch (sel) {
         case 1: aspect = CSVideoCropAspect16_9; break;
-        case 2: aspect = CSVideoCropAspect4_3; break;
+        case 2: aspect = CSVideoCropAspect9_16; break;
         case 3: aspect = CSVideoCropAspect1_1; break;
-        case 4: aspect = CSVideoCropAspect9_16; break;
-        case 5: aspect = CSVideoCropAspectOriginal; break;
+        case 4: aspect = CSVideoCropAspect4_5; break;
+        case 5: aspect = CSVideoCropAspect4_3; break;
+        case 6: aspect = CSVideoCropAspect21_9; break;
+        case 7: aspect = CSVideoCropAspectOriginal; break;
         case 0:
         default:
             aspect = CSVideoCropAspectFreeform;
@@ -463,9 +563,40 @@
     [self updateCropUI];
 }
 
+- (void)swapOrientationClicked:(id)sender {
+    [self.cropOverlay swapOrientation];
+    [self updateCropUI];
+    [self updateEditStatus];
+    [self showToast:[NSString stringWithFormat:@"Aspect: %@", [self.cropOverlay aspectRatioTitle]]];
+}
+
+- (void)centerCropClicked:(id)sender {
+    [self.cropOverlay centerCropInVideo];
+    [self updateCropUI];
+    [self updateEditStatus];
+    [self showToast:@"Centered crop box"];
+}
+
 - (void)cropFitClicked:(id)sender {
     [self.cropOverlay resetToFullVideo];
     self.aspectSegment.selectedSegment = 0;
+    [self updateCropUI];
+    [self updateEditStatus];
+    [self showToast:@"Fit crop to full video"];
+}
+
+- (void)resolutionPresetClicked:(id)sender {
+    CGRect px = [self.cropOverlay pixelCropRect];
+    // Cycle standard presets based on current width
+    if (px.size.width >= 1920) {
+        [self.cropOverlay setPixelCropSize:NSMakeSize(1280, 720)];
+    } else if (px.size.width >= 1280) {
+        [self.cropOverlay setPixelCropSize:NSMakeSize(960, 540)];
+    } else if (px.size.width >= 960) {
+        [self.cropOverlay setPixelCropSize:NSMakeSize(1080, 1080)];
+    } else {
+        [self.cropOverlay resetToFullVideo];
+    }
     [self updateCropUI];
     [self updateEditStatus];
 }
@@ -477,13 +608,16 @@
 - (void)updateCropUI {
     CGRect px = [self.cropOverlay pixelCropRect];
     _cropPixelRect = px;
-    self.cropResolutionLabel.stringValue = [NSString stringWithFormat:@"%ld×%ld",
-                                            (long)px.size.width, (long)px.size.height];
+    self.cropResolutionButton.title = [NSString stringWithFormat:@"%ld×%ld",
+                                       (long)px.size.width, (long)px.size.height];
 }
 
 - (void)updateEditStatus {
     BOOL isTrimmed = [self.timelineView isTrimmed];
     BOOL isCropped = [self.cropOverlay isCropped];
+    BOOL isRotated = (self.rotationDegrees != 0);
+    BOOL isSped = (fabs(self.playbackSpeed - 1.0) > 0.05);
+    BOOL isMuted = self.audioMuted;
 
     NSMutableArray<NSString *> *tags = [NSMutableArray array];
     if (isTrimmed) {
@@ -493,6 +627,15 @@
     if (isCropped) {
         CGRect px = [self.cropOverlay pixelCropRect];
         [tags addObject:[NSString stringWithFormat:@"⛶ Crop %ld×%ld", (long)px.size.width, (long)px.size.height]];
+    }
+    if (isRotated) {
+        [tags addObject:[NSString stringWithFormat:@"↷ %ld°", (long)self.rotationDegrees]];
+    }
+    if (isSped) {
+        [tags addObject:[NSString stringWithFormat:@"⚡ %.2g×", self.playbackSpeed]];
+    }
+    if (isMuted) {
+        [tags addObject:@"🔇 Muted"];
     }
 
     if (tags.count > 0) {
@@ -536,56 +679,98 @@
 
     CGFloat btnH = 28.0;
     CGFloat btnY = 11.0;
+    CGFloat gap = 4.0;
+
+    // Compact button widths
+    CGFloat newW = 54.0;
+    CGFloat openW = 58.0;
+    CGFloat cropW = 52.0;
+    CGFloat rotW = 58.0;
+    CGFloat spdW = 48.0;
+    CGFloat audW = 56.0;
+    CGFloat snapW = 52.0;
+    CGFloat resetW = 54.0;
 
     // Left buttons
     CGFloat x = 12.0;
-    self.recordNewButton.frame = NSMakeRect(x, btnY, 82.0, btnH);
-    x += 82.0 + 6.0;
+    self.recordNewButton.frame = NSMakeRect(x, btnY, newW, btnH);
+    x += newW + gap;
 
-    self.openVideoButton.frame = NSMakeRect(x, btnY, 80.0, btnH);
-    x += 80.0 + 10.0;
+    self.openVideoButton.frame = NSMakeRect(x, btnY, openW, btnH);
+    x += openW + gap + 3.0; // slight group gap
 
-    // Middle tools: place beside left group
-    self.cropButton.frame = NSMakeRect(x, btnY, 74.0, btnH);
-    x += 74.0 + 6.0;
+    self.cropButton.frame = NSMakeRect(x, btnY, cropW, btnH);
+    x += cropW + gap;
 
-    self.resetEditsButton.frame = NSMakeRect(x, btnY, 96.0, btnH);
-    CGFloat leftGroupEnd = x + 96.0;
+    self.rotateButton.frame = NSMakeRect(x, btnY, rotW, btnH);
+    x += rotW + gap;
 
-    // Right buttons laid out right-to-left
+    self.speedButton.frame = NSMakeRect(x, btnY, spdW, btnH);
+    x += spdW + gap;
+
+    self.audioButton.frame = NSMakeRect(x, btnY, audW, btnH);
+    x += audW + gap;
+
+    // Right-to-left layout for essential right buttons first
     CGFloat rightX = totalW - 12.0;
 
-    CGFloat cancelW = 66.0;
+    CGFloat cancelW = 54.0;
     self.closeButton.frame = NSMakeRect(rightX - cancelW, btnY, cancelW, btnH);
-    rightX -= (cancelW + 6.0);
+    rightX -= (cancelW + gap);
 
-    // Minimize button: only if generous space
-    if (totalW >= 820.0) {
+    CGFloat saveW = 86.0;
+    self.saveMP4Button.frame = NSMakeRect(rightX - saveW, btnY, saveW, btnH);
+    rightX -= (saveW + gap);
+
+    CGFloat copyW = 78.0;
+    self.clipboardButton.frame = NSMakeRect(rightX - copyW, btnY, copyW, btnH);
+    rightX -= (copyW + gap);
+
+    // Optional GIF export button
+    CGFloat gifW = 54.0;
+    if (rightX - gifW > x + snapW + resetW + 12.0) {
+        self.exportGifButton.hidden = NO;
+        self.exportGifButton.frame = NSMakeRect(rightX - gifW, btnY, gifW, btnH);
+        rightX -= (gifW + gap);
+    } else {
+        self.exportGifButton.hidden = YES;
+    }
+
+    // Optional Reveal in Finder
+    CGFloat revealW = 62.0;
+    if (rightX - revealW > x + snapW + resetW + 12.0 && totalW >= 880.0) {
+        self.revealInFinderButton.hidden = NO;
+        self.revealInFinderButton.frame = NSMakeRect(rightX - revealW, btnY, revealW, btnH);
+        rightX -= (revealW + gap);
+    } else {
+        self.revealInFinderButton.hidden = YES;
+    }
+
+    // Optional Minimize button
+    CGFloat minW = 68.0;
+    if (rightX - minW > x + snapW + resetW + 12.0 && totalW >= 940.0) {
         self.minimizeButton.hidden = NO;
-        CGFloat minW = 82.0;
         self.minimizeButton.frame = NSMakeRect(rightX - minW, btnY, minW, btnH);
-        rightX -= (minW + 6.0);
+        rightX -= (minW + gap);
     } else {
         self.minimizeButton.hidden = YES;
     }
 
-    // Save MP4…
-    CGFloat saveW = 106.0;
-    self.saveMP4Button.frame = NSMakeRect(rightX - saveW, btnY, saveW, btnH);
-    rightX -= (saveW + 6.0);
+    // Left auxiliary buttons: snapFrame and resetEdits
+    if (x + snapW + resetW + 6.0 <= rightX) {
+        self.snapFrameButton.hidden = NO;
+        self.snapFrameButton.frame = NSMakeRect(x, btnY, snapW, btnH);
+        x += snapW + gap;
 
-    // Copy Video
-    CGFloat copyW = 98.0;
-    self.clipboardButton.frame = NSMakeRect(rightX - copyW, btnY, copyW, btnH);
-    rightX -= (copyW + 6.0);
-
-    // Reveal in Finder: only if no collision with left group
-    CGFloat revealW = 76.0;
-    if (rightX - revealW > leftGroupEnd + 10.0 && totalW >= 740.0) {
-        self.revealInFinderButton.hidden = NO;
-        self.revealInFinderButton.frame = NSMakeRect(rightX - revealW, btnY, revealW, btnH);
+        self.resetEditsButton.hidden = NO;
+        self.resetEditsButton.frame = NSMakeRect(x, btnY, resetW, btnH);
+    } else if (x + resetW + 6.0 <= rightX) {
+        self.snapFrameButton.hidden = YES;
+        self.resetEditsButton.hidden = NO;
+        self.resetEditsButton.frame = NSMakeRect(x, btnY, resetW, btnH);
     } else {
-        self.revealInFinderButton.hidden = YES;
+        self.snapFrameButton.hidden = YES;
+        self.resetEditsButton.hidden = YES;
     }
 }
 
@@ -594,7 +779,7 @@
         return;
     }
     CGFloat totalW = NSWidth(self.headerBar.bounds);
-    self.metaLabel.frame = NSMakeRect(440, 8, MAX(120.0, totalW - 456.0), 18);
+    self.metaLabel.frame = NSMakeRect(480, 8, MAX(120.0, totalW - 496.0), 18);
 }
 
 - (void)windowDidResize:(NSNotification *)notification {
@@ -661,6 +846,25 @@
     AVPlayerItem *item = [AVPlayerItem playerItemWithAsset:asset];
     [self.player replaceCurrentItemWithPlayerItem:item];
 
+    if (self.endTimeObserver != nil) {
+        [[NSNotificationCenter defaultCenter] removeObserver:self.endTimeObserver];
+        self.endTimeObserver = nil;
+    }
+    __weak typeof(self) weakSelf = self;
+    self.endTimeObserver = [[NSNotificationCenter defaultCenter]
+        addObserverForName:AVPlayerItemDidPlayToEndTimeNotification
+                    object:self.player.currentItem
+                     queue:[NSOperationQueue mainQueue]
+                usingBlock:^(NSNotification *note) {
+                    __strong typeof(weakSelf) strongSelf = weakSelf;
+                    if (strongSelf != nil && strongSelf.loopPlayback && strongSelf.player != nil) {
+                        CMTime loopStart = CMTimeMakeWithSeconds(strongSelf.trimStartTime, 600);
+                        [strongSelf.player seekToTime:loopStart toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
+                        [strongSelf.player play];
+                        strongSelf.player.rate = (float)strongSelf.playbackSpeed;
+                    }
+                }];
+
     self.cropOverlay.videoNaturalSize = videoSize;
     [self.cropOverlay resetToFullVideo];
 
@@ -670,10 +874,12 @@
     self.metaLabel.stringValue = [self metadataSummaryForAsset:asset url:newURL];
     self.title = [NSString stringWithFormat:@"Video Editor — %@", newURL.lastPathComponent];
     [self updateCropUI];
+    [self updateAudioButtonAvailability];
     [self updateEditStatus];
 
     [self.player seekToTime:kCMTimeZero];
     [self.player play];
+    self.player.rate = (float)self.playbackSpeed;
     self.timelineView.isPlaying = YES;
     return YES;
 }
@@ -710,12 +916,158 @@
     if (self.cropModeActive) {
         self.cropButton.state = NSControlStateValueOn;
         self.cropButton.bezelColor = [CSTheme accent];
-        [self showToast:@"Crop Mode: Drag box or handles · Aspect ratio in strip"];
+        [self showToast:@"Crop Mode: Drag box · 8 Presets · ⇄ Flip · ⊙ Center"];
     } else {
         self.cropButton.state = NSControlStateValueOff;
         self.cropButton.bezelColor = nil;
+        if (self.cropPreviewActive) {
+            [self toggleCropPreview:nil];
+        }
     }
     [self updateEditStatus];
+}
+
+- (void)toggleCropPreview:(nullable id)sender {
+    self.cropPreviewActive = !self.cropPreviewActive;
+    if (self.cropPreviewActive) {
+        self.cropOverlay.hidden = YES;
+        self.cropPreviewButton.state = NSControlStateValueOn;
+        self.cropPreviewButton.bezelColor = [CSTheme accent];
+        [self applyCropPreviewZoom];
+        [self showToast:@"Crop Preview (Playing Framed Output)"];
+    } else {
+        self.cropOverlay.hidden = !self.cropModeActive;
+        self.cropPreviewButton.state = NSControlStateValueOff;
+        self.cropPreviewButton.bezelColor = nil;
+        self.playerView.frame = self.playerContainer.bounds;
+        [self showToast:@"Crop Edit Mode"];
+    }
+}
+
+- (void)applyCropPreviewZoom {
+    NSRect cBounds = self.playerContainer.bounds;
+    NSRect crop = [self.cropOverlay displayCropRect];
+    if (crop.size.width <= 0 || crop.size.height <= 0 || cBounds.size.width <= 0 || cBounds.size.height <= 0) {
+        return;
+    }
+
+    CGFloat scale = MIN(cBounds.size.width / crop.size.width, cBounds.size.height / crop.size.height);
+    CGFloat scaledW = cBounds.size.width * scale;
+    CGFloat scaledH = cBounds.size.height * scale;
+
+    CGFloat cropMidX = NSMidX(crop);
+    CGFloat cropMidY = NSMidY(crop);
+
+    CGFloat newX = (cBounds.size.width / 2.0) - (cropMidX * scale);
+    CGFloat newY = (cBounds.size.height / 2.0) - (cropMidY * scale);
+
+    self.playerView.frame = NSMakeRect(floor(newX), floor(newY), floor(scaledW), floor(scaledH));
+}
+
+- (void)rotateClicked:(nullable id)sender {
+    self.rotationDegrees = (self.rotationDegrees + 90) % 360;
+    [self applyRotationPreview];
+    [self updateEditStatus];
+    [self showToast:[NSString stringWithFormat:@"Rotated %ld° CW", (long)self.rotationDegrees]];
+}
+
+- (void)setRotationDegrees:(NSInteger)degrees {
+    _rotationDegrees = ((degrees % 360) + 360) % 360;
+    [self applyRotationPreview];
+    [self updateEditStatus];
+}
+
+- (void)applyRotationPreview {
+    if (self.rotationDegrees != 0) {
+        self.rotateButton.title = [NSString stringWithFormat:@"%ld°", (long)self.rotationDegrees];
+        self.rotateButton.bezelColor = [CSTheme accent];
+    } else {
+        self.rotateButton.title = @"Rotate";
+        self.rotateButton.bezelColor = nil;
+    }
+}
+
+- (void)cycleSpeedClicked:(nullable id)sender {
+    NSArray<NSNumber *> *speeds = @[@(0.5), @(0.75), @(1.0), @(1.25), @(1.5), @(2.0)];
+    NSUInteger idx = 2; // 1.0
+    for (NSUInteger i = 0; i < speeds.count; i++) {
+        if (fabs(speeds[i].doubleValue - self.playbackSpeed) < 0.05) {
+            idx = i;
+            break;
+        }
+    }
+    idx = (idx + 1) % speeds.count;
+    [self setPlaybackSpeed:speeds[idx].doubleValue];
+}
+
+- (void)setPlaybackSpeed:(CGFloat)speed {
+    _playbackSpeed = (speed >= 0.25 && speed <= 4.0) ? speed : 1.0;
+    self.speedButton.title = [NSString stringWithFormat:@"%.2g×", _playbackSpeed];
+    if (fabs(_playbackSpeed - 1.0) > 0.05) {
+        self.speedButton.bezelColor = [CSTheme accent];
+    } else {
+        self.speedButton.bezelColor = nil;
+    }
+    if (self.player.rate > 0.0) {
+        self.player.rate = (float)_playbackSpeed;
+    }
+    [self updateEditStatus];
+    [self showToast:[NSString stringWithFormat:@"Playback Speed: %.2g×", _playbackSpeed]];
+}
+
+- (void)toggleMuteClicked:(nullable id)sender {
+    [self setAudioMuted:!self.audioMuted];
+}
+
+- (void)setAudioMuted:(BOOL)muted {
+    _audioMuted = muted;
+    self.player.muted = muted;
+    if (_audioMuted) {
+        self.audioButton.title = @"Muted";
+        self.audioButton.image = [NSImage imageWithSystemSymbolName:@"speaker.slash.fill" accessibilityDescription:@"Audio Muted"];
+        self.audioButton.bezelColor = [NSColor systemRedColor];
+        [self showToast:@"Audio Muted (Silent Video)"];
+    } else {
+        self.audioButton.title = @"Audio";
+        self.audioButton.image = [NSImage imageWithSystemSymbolName:@"speaker.wave.2.fill" accessibilityDescription:@"Audio On"];
+        self.audioButton.bezelColor = nil;
+        [self showToast:@"Audio Enabled"];
+    }
+    [self updateEditStatus];
+}
+
+- (void)captureFrameClicked:(nullable id)sender {
+    NSImage *img = [self currentFrameImage];
+    if (img == nil) {
+        [self showToast:@"Could not capture frame"];
+        return;
+    }
+
+    NSPasteboard *pb = [NSPasteboard generalPasteboard];
+    [pb clearContents];
+    [pb writeObjects:@[img]];
+
+    NSBitmapImageRep *rep = [NSBitmapImageRep imageRepWithData:[img TIFFRepresentation]];
+    NSData *pngData = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+
+    NSDateFormatter *df = [[NSDateFormatter alloc] init];
+    df.dateFormat = @"yyyy-MM-dd 'at' HH.mm.ss";
+    NSString *filename = [NSString stringWithFormat:@"Video Frame %@.png", [df stringFromDate:[NSDate date]]];
+    NSURL *destURL = [[NSURL fileURLWithPath:NSTemporaryDirectory()] URLByAppendingPathComponent:filename];
+    [pngData writeToURL:destURL atomically:YES];
+    [pb setPropertyList:@[destURL.path] forType:NSFilenamesPboardType];
+
+    [self showToast:[NSString stringWithFormat:@"Captured frame %.0f×%.0f to clipboard", img.size.width, img.size.height]];
+}
+
+- (nullable NSImage *)currentFrameImage {
+    Float64 sec = CMTimeGetSeconds(self.player.currentTime);
+    if (isnan(sec) || sec < 0) sec = 0.0;
+    return [VideoEditorEngine captureFrameAtURL:self.videoURL
+                                         atTime:sec
+                                       cropRect:self.cropPixelRect
+                                       rotation:self.rotationDegrees
+                                          error:nil];
 }
 
 - (void)resetEdits:(nullable id)sender {
@@ -727,8 +1079,28 @@
     self.aspectSegment.selectedSegment = 0;
     [self updateCropUI];
 
+    self.rotationDegrees = 0;
+    [self applyRotationPreview];
+
+    self.playbackSpeed = 1.0;
+    self.speedButton.title = @"1.0×";
+    self.speedButton.bezelColor = nil;
+    if (self.player.rate > 0.0) {
+        self.player.rate = 1.0;
+    }
+
+    self.audioMuted = NO;
+    self.player.muted = NO;
+    self.audioButton.title = @"Audio";
+    self.audioButton.image = [NSImage imageWithSystemSymbolName:@"speaker.wave.2.fill" accessibilityDescription:@"Audio On"];
+    self.audioButton.bezelColor = nil;
+
+    if (self.cropPreviewActive) {
+        [self toggleCropPreview:nil];
+    }
+
     [self updateEditStatus];
-    [self showToast:@"Reset all cuts and crops"];
+    [self showToast:@"Reset all edits"];
 }
 
 - (void)setTrimStart:(NSTimeInterval)start end:(NSTimeInterval)end {
@@ -746,16 +1118,20 @@
     [self updateEditStatus];
 }
 
-- (void)exportEditedVideoToURL:(NSURL *)destinationURL
-               progressHandler:(nullable void (^)(float progress))progressHandler
-                    completion:(void (^)(BOOL success, NSError * _Nullable error))completion {
-    [VideoEditorEngine exportVideoAtURL:self.videoURL
-                          trimStartTime:self.trimStartTime
-                            trimEndTime:self.trimEndTime
-                               cropRect:self.cropPixelRect
-                         destinationURL:destinationURL
-                        progressHandler:progressHandler
-                             completion:completion];
+- (nullable AVAssetExportSession *)exportEditedVideoToURL:(NSURL *)destinationURL
+                                          progressHandler:(nullable void (^)(float progress))progressHandler
+                                               completion:(void (^)(BOOL success, NSError * _Nullable error))completion {
+    return [VideoEditorEngine exportVideoAtURL:self.videoURL
+                                 trimStartTime:self.trimStartTime
+                                   trimEndTime:self.trimEndTime
+                                      cropRect:self.cropPixelRect
+                                      rotation:self.rotationDegrees
+                                 playbackSpeed:self.playbackSpeed
+                                     muteAudio:self.audioMuted
+                                destinationURL:destinationURL
+                               progressHandler:progressHandler
+                               completionQueue:dispatch_get_main_queue()
+                                    completion:completion];
 }
 
 - (BOOL)saveVideoToURL:(NSURL *)destinationURL error:(NSError * _Nullable * _Nullable)error {
@@ -776,12 +1152,31 @@
                                                trimStartTime:self.trimStartTime
                                                  trimEndTime:self.trimEndTime
                                                     cropRect:self.cropPixelRect
+                                                    rotation:self.rotationDegrees
+                                               playbackSpeed:self.playbackSpeed
+                                                   muteAudio:self.audioMuted
                                               destinationURL:destinationURL
                                                        error:error];
     if (ok) {
         self.lastSavedURL = destinationURL;
     }
     return ok;
+}
+
+- (BOOL)saveGifToURL:(NSURL *)destinationURL error:(NSError * _Nullable * _Nullable)error {
+    if (destinationURL == nil) return NO;
+    if (![destinationURL.pathExtension.lowercaseString isEqualToString:@"gif"]) {
+        destinationURL = [destinationURL URLByAppendingPathExtension:@"gif"];
+    }
+    return [VideoEditorEngine exportGifSynchronousAtURL:self.videoURL
+                                          trimStartTime:self.trimStartTime
+                                            trimEndTime:self.trimEndTime
+                                               cropRect:self.cropPixelRect
+                                               rotation:self.rotationDegrees
+                                          playbackSpeed:self.playbackSpeed
+                                                    fps:15.0
+                                         destinationURL:destinationURL
+                                                  error:error];
 }
 
 #pragma mark - Actions
@@ -810,9 +1205,101 @@
     }];
 }
 
+- (void)showExportHUDWithTitle:(NSString *)title {
+    if (self.exportHUDView != nil) {
+        [self.exportHUDView removeFromSuperview];
+        self.exportHUDView = nil;
+    }
+
+    NSView *container = self.contentView;
+    if (container == nil) return;
+
+    NSView *hud = [[NSView alloc] initWithFrame:container.bounds];
+    hud.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    hud.wantsLayer = YES;
+    hud.layer.backgroundColor = [NSColor colorWithCalibratedWhite:0.0 alpha:0.65].CGColor;
+    hud.layer.zPosition = 200;
+
+    CGFloat boxW = 280.0;
+    CGFloat boxH = 140.0;
+    CGFloat boxX = floor((NSWidth(hud.bounds) - boxW) / 2.0);
+    CGFloat boxY = floor((NSHeight(hud.bounds) - boxH) / 2.0);
+
+    NSView *box = [[NSView alloc] initWithFrame:NSMakeRect(boxX, boxY, boxW, boxH)];
+    box.autoresizingMask = NSViewMinXMargin | NSViewMaxXMargin | NSViewMinYMargin | NSViewMaxYMargin;
+    box.wantsLayer = YES;
+    box.layer.cornerRadius = 12.0;
+    box.layer.backgroundColor = [NSColor colorWithCalibratedWhite:0.12 alpha:0.95].CGColor;
+    box.layer.borderColor = [[NSColor whiteColor] colorWithAlphaComponent:0.18].CGColor;
+    box.layer.borderWidth = 1.0;
+    [hud addSubview:box];
+
+    NSTextField *titleLabel = [NSTextField labelWithString:title ?: @"Exporting…"];
+    titleLabel.font = [NSFont systemFontOfSize:14 weight:NSFontWeightSemibold];
+    titleLabel.textColor = [NSColor whiteColor];
+    titleLabel.alignment = NSTextAlignmentCenter;
+    titleLabel.frame = NSMakeRect(16.0, boxH - 36.0, boxW - 32.0, 20.0);
+    [box addSubview:titleLabel];
+    self.exportHUDLabel = titleLabel;
+
+    NSProgressIndicator *prog = [[NSProgressIndicator alloc] initWithFrame:NSMakeRect(24.0, boxH - 68.0, boxW - 48.0, 12.0)];
+    prog.indeterminate = NO;
+    prog.minValue = 0.0;
+    prog.maxValue = 1.0;
+    prog.doubleValue = 0.0;
+    prog.style = NSProgressIndicatorStyleBar;
+    [box addSubview:prog];
+    self.exportHUDProgress = prog;
+
+    NSButton *cancelBtn = [NSButton buttonWithTitle:@"Cancel" target:self action:@selector(cancelActiveExport)];
+    cancelBtn.bezelStyle = NSBezelStyleRounded;
+    cancelBtn.frame = NSMakeRect(floor((boxW - 90.0) / 2.0), 16.0, 90.0, 28.0);
+    [box addSubview:cancelBtn];
+
+    [container addSubview:hud];
+    self.exportHUDView = hud;
+}
+
+- (void)updateExportHUDProgress:(float)progress {
+    if (self.exportHUDProgress != nil) {
+        self.exportHUDProgress.doubleValue = (double)progress;
+    }
+}
+
+- (void)hideExportHUD {
+    if (self.exportHUDView != nil) {
+        [self.exportHUDView removeFromSuperview];
+        self.exportHUDView = nil;
+        self.exportHUDProgress = nil;
+        self.exportHUDLabel = nil;
+    }
+}
+
+- (void)cancelActiveExport {
+    if (!self.isExporting) {
+        return;
+    }
+    fprintf(stderr, "[VideoPreviewWindow] User cancelled active export\n");
+    if (self.activeExportSession != nil) {
+        [self.activeExportSession cancelExport];
+        self.activeExportSession = nil;
+    }
+    if (self.activeExportCancelBlock != nil) {
+        self.activeExportCancelBlock();
+        self.activeExportCancelBlock = nil;
+    }
+    self.isExporting = NO;
+    [self hideExportHUD];
+    [self showToast:@"Export cancelled"];
+}
+
 - (void)saveClicked:(nullable id)sender {
     if (self.videoURL == nil) {
         [self showToast:@"No video to save"];
+        return;
+    }
+    if (self.isExporting) {
+        [self showToast:@"Export already in progress"];
         return;
     }
 
@@ -854,20 +1341,30 @@
             destURL = [destURL URLByAppendingPathExtension:@"mp4"];
         }
 
-        [strongSelf showToast:@"Exporting video…"];
+        strongSelf.isExporting = YES;
+        [strongSelf showExportHUDWithTitle:@"Exporting MP4…"];
 
-        [strongSelf exportEditedVideoToURL:destURL
+        strongSelf.activeExportSession = [strongSelf exportEditedVideoToURL:destURL
                            progressHandler:^(float progress) {
-            if (progress < 0.99) {
-                [strongSelf showToast:[NSString stringWithFormat:@"Exporting… %.0f%%", progress * 100.0]];
-            }
+            [strongSelf updateExportHUDProgress:progress];
         }
                                 completion:^(BOOL success, NSError * _Nullable error) {
+            [strongSelf hideExportHUD];
+            strongSelf.isExporting = NO;
+            strongSelf.activeExportSession = nil;
+
+            if (error != nil && error.code == NSUserCancelledError) {
+                [strongSelf showToast:@"Export cancelled"];
+                return;
+            }
+
             if (!success) {
-                NSAlert *alert = [[NSAlert alloc] init];
-                alert.messageText = @"Could not save video";
-                alert.informativeText = error.localizedDescription ?: @"An unknown error occurred while exporting.";
-                [alert beginSheetModalForWindow:strongSelf completionHandler:nil];
+                if (strongSelf.isVisible && strongSelf.contentView != nil) {
+                    NSAlert *alert = [[NSAlert alloc] init];
+                    alert.messageText = @"Could not save video";
+                    alert.informativeText = error.localizedDescription ?: @"An unknown error occurred while exporting.";
+                    [alert beginSheetModalForWindow:strongSelf completionHandler:nil];
+                }
                 return;
             }
 
@@ -882,6 +1379,98 @@
 
             strongSelf.title = [NSString stringWithFormat:@"Video Editor — %@", destURL.lastPathComponent];
             strongSelf.miniwindowTitle = destURL.lastPathComponent;
+        }];
+    }];
+}
+
+- (void)exportGifClicked:(nullable id)sender {
+    if (self.videoURL == nil) {
+        [self showToast:@"No video to export"];
+        return;
+    }
+    if (self.isExporting) {
+        [self showToast:@"Export already in progress"];
+        return;
+    }
+
+    [NSApp activateIgnoringOtherApps:YES];
+    [self makeKeyAndOrderFront:nil];
+    [self.player pause];
+    self.timelineView.isPlaying = NO;
+
+    NSSavePanel *panel = [NSSavePanel savePanel];
+    panel.canCreateDirectories = YES;
+    panel.title = @"Export Animated GIF";
+    if (@available(macOS 11.0, *)) {
+        panel.allowedContentTypes = @[UTTypeGIF];
+    } else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        panel.allowedFileTypes = @[@"gif"];
+#pragma clang diagnostic pop
+    }
+
+    NSDateFormatter *df = [[NSDateFormatter alloc] init];
+    df.dateFormat = @"yyyy-MM-dd 'at' HH.mm.ss";
+    panel.nameFieldStringValue = [NSString stringWithFormat:@"Video %@.gif", [df stringFromDate:[NSDate date]]];
+
+    NSButton *copyCheckbox = [NSButton checkboxWithTitle:@"Also copy GIF to clipboard" target:nil action:nil];
+    copyCheckbox.state = NSControlStateValueOn;
+    panel.accessoryView = copyCheckbox;
+
+    __weak typeof(self) weakSelf = self;
+    [panel beginSheetModalForWindow:self completionHandler:^(NSModalResponse result) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (strongSelf == nil || result != NSModalResponseOK || panel.URL == nil) {
+            return;
+        }
+
+        NSURL *destURL = panel.URL;
+        if (![destURL.pathExtension.lowercaseString isEqualToString:@"gif"]) {
+            destURL = [destURL URLByAppendingPathExtension:@"gif"];
+        }
+
+        strongSelf.isExporting = YES;
+        [strongSelf showExportHUDWithTitle:@"Creating GIF…"];
+
+        strongSelf.activeExportCancelBlock = [VideoEditorEngine exportGifAtURL:strongSelf.videoURL
+                            trimStartTime:strongSelf.trimStartTime
+                              trimEndTime:strongSelf.trimEndTime
+                                 cropRect:strongSelf.cropPixelRect
+                                 rotation:strongSelf.rotationDegrees
+                            playbackSpeed:strongSelf.playbackSpeed
+                                      fps:15.0
+                           destinationURL:destURL
+                          progressHandler:^(float progress) {
+            [strongSelf updateExportHUDProgress:progress];
+        }
+                          completionQueue:dispatch_get_main_queue()
+                               completion:^(BOOL success, NSError * _Nullable error) {
+            [strongSelf hideExportHUD];
+            strongSelf.isExporting = NO;
+            strongSelf.activeExportCancelBlock = nil;
+
+            if (error != nil && error.code == NSUserCancelledError) {
+                [strongSelf showToast:@"GIF export cancelled"];
+                return;
+            }
+
+            if (!success) {
+                if (strongSelf.isVisible && strongSelf.contentView != nil) {
+                    NSAlert *alert = [[NSAlert alloc] init];
+                    alert.messageText = @"Could not export GIF";
+                    alert.informativeText = error.localizedDescription ?: @"An unknown error occurred.";
+                    [alert beginSheetModalForWindow:strongSelf completionHandler:nil];
+                }
+                return;
+            }
+
+            if (copyCheckbox.state == NSControlStateValueOn) {
+                [strongSelf copyTargetURLToPasteboard:destURL];
+                [strongSelf showToast:[NSString stringWithFormat:@"Exported & copied %@", destURL.lastPathComponent]];
+            } else {
+                [strongSelf showToast:[NSString stringWithFormat:@"Exported %@", destURL.lastPathComponent]];
+            }
         }];
     }];
 }
@@ -905,11 +1494,18 @@
         [self showToast:@"No video to copy"];
         return;
     }
+    if (self.isExporting) {
+        [self showToast:@"Export already in progress"];
+        return;
+    }
 
     BOOL isTrimmed = [self.timelineView isTrimmed];
     BOOL isCropped = [self.cropOverlay isCropped];
+    BOOL isRotated = (self.rotationDegrees != 0);
+    BOOL isSped = (fabs(self.playbackSpeed - 1.0) > 0.05);
+    BOOL isMuted = self.audioMuted;
 
-    if (!isTrimmed && !isCropped) {
+    if (!isTrimmed && !isCropped && !isRotated && !isSped && !isMuted) {
         NSURL *targetURL = self.lastSavedURL ?: self.videoURL;
         [self copyTargetURLToPasteboard:targetURL];
         [self showToast:@"Copied video to clipboard"];
@@ -919,13 +1515,29 @@
     NSString *tempName = [NSString stringWithFormat:@"choxieshoot-edit-%@.mp4", [[NSUUID UUID] UUIDString]];
     NSURL *tempDest = [[NSURL fileURLWithPath:NSTemporaryDirectory()] URLByAppendingPathComponent:tempName];
 
-    [self showToast:@"Preparing video copy…"];
+    self.isExporting = YES;
+    [self showExportHUDWithTitle:@"Preparing video…"];
     __weak typeof(self) weakSelf = self;
-    [self exportEditedVideoToURL:tempDest
-                 progressHandler:nil
+    self.activeExportSession = [self exportEditedVideoToURL:tempDest
+                 progressHandler:^(float progress) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (strongSelf) {
+            [strongSelf updateExportHUDProgress:progress];
+        }
+    }
                       completion:^(BOOL success, NSError * _Nullable error) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (!success || strongSelf == nil) {
+        if (strongSelf == nil) return;
+        [strongSelf hideExportHUD];
+        strongSelf.isExporting = NO;
+        strongSelf.activeExportSession = nil;
+
+        if (error != nil && error.code == NSUserCancelledError) {
+            [strongSelf showToast:@"Copy cancelled"];
+            return;
+        }
+
+        if (!success) {
             [strongSelf showToast:@"Could not copy video"];
             return;
         }
@@ -1038,6 +1650,14 @@
     NSString *chars = event.charactersIgnoringModifiers.lowercaseString;
 
     if (event.keyCode == 53) { // Escape
+        if (self.isExporting) {
+            [self cancelActiveExport];
+            return;
+        }
+        if (self.cropPreviewActive) {
+            [self toggleCropPreview:nil];
+            return;
+        }
         if (self.cropModeActive) {
             [self toggleCropMode:nil];
             return;
@@ -1056,6 +1676,7 @@
                 [self.player seekToTime:CMTimeMakeWithSeconds(self.trimStartTime, 600)];
             }
             [self.player play];
+            self.player.rate = (float)self.playbackSpeed;
             self.timelineView.isPlaying = YES;
         }
         return;
@@ -1085,11 +1706,27 @@
             [self toggleCropMode:nil];
             return;
         }
+        if ([chars isEqualToString:@"r"]) {
+            [self rotateClicked:nil];
+            return;
+        }
+        if ([chars isEqualToString:@"m"]) {
+            [self toggleMuteClicked:nil];
+            return;
+        }
     }
 
     if ((flags & NSEventModifierFlagCommand) != 0) {
+        if ((flags & NSEventModifierFlagShift) != 0 && [chars isEqualToString:@"c"]) {
+            [self captureFrameClicked:nil];
+            return;
+        }
         if ([chars isEqualToString:@"s"]) {
             [self saveClicked:nil];
+            return;
+        }
+        if ([chars isEqualToString:@"g"]) {
+            [self exportGifClicked:nil];
             return;
         }
         if ([chars isEqualToString:@"c"]) {
@@ -1122,9 +1759,11 @@
 }
 
 - (void)close {
+    if (self.isExporting) {
+        [self cancelActiveExport];
+    }
     [self orderOut:nil];
 
-    // Safely remove time observers from the player BEFORE releasing it
     if (self.timeObserver != nil && self.player != nil) {
         [self.player removeTimeObserver:self.timeObserver];
         self.timeObserver = nil;

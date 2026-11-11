@@ -22,6 +22,7 @@ NS_ASSUME_NONNULL_BEGIN
 @interface CanvasView : NSView
 
 @property (nonatomic, strong, nullable) NSImage *backgroundImage;
+@property (nonatomic, readonly) NSMutableArray<Annotation *> *annotations;
 @property (nonatomic) ToolType currentTool;
 @property (nonatomic, strong) NSColor *currentColor;
 @property (nonatomic) CGFloat currentLineWidth;
@@ -68,6 +69,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)addAnnotation:(Annotation *)annotation;
 - (void)deleteSelectedAnnotation;
 - (void)clearSelection;
+- (void)clearPreviewAnnotation;
 - (void)cropToRect:(NSRect)cropRect;
 - (NSInteger)nextCalloutNumber;
 - (void)eraseAtPoint:(NSPoint)point;

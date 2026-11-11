@@ -708,9 +708,13 @@
     [self removeKeyMonitors];
     if ([self.contentView isKindOfClass:[SelectionView class]]) {
         SelectionView *view = (SelectionView *)self.contentView;
+        SelectionCancelBlock cancel = view.cancelHandler;
         view.modeCompletion = nil;
         view.completion = nil;
         view.cancelHandler = nil;
+        if (cancel != nil) {
+            cancel();
+        }
     }
     [self orderOut:nil];
     self.contentView = [[NSView alloc] initWithFrame:NSZeroRect];

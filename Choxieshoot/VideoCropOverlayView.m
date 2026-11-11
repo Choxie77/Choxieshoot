@@ -21,6 +21,8 @@ typedef NS_ENUM(NSInteger, CSCropDragHandle) {
 @property (nonatomic) NSPoint dragStartPoint;
 @property (nonatomic) CGRect dragInitialCropRect;
 @property (nonatomic, strong, nullable) NSTrackingArea *trackingArea;
+@property (nonatomic) BOOL snappedCenterX;
+@property (nonatomic) BOOL snappedCenterY;
 
 @end
 
@@ -82,17 +84,120 @@ typedef NS_ENUM(NSInteger, CSCropDragHandle) {
     switch (self.aspectPreset) {
         case CSVideoCropAspect16_9:
             return 16.0 / 9.0;
-        case CSVideoCropAspect4_3:
-            return 4.0 / 3.0;
-        case CSVideoCropAspect1_1:
-            return 1.0;
         case CSVideoCropAspect9_16:
             return 9.0 / 16.0;
+        case CSVideoCropAspect1_1:
+            return 1.0;
+        case CSVideoCropAspect4_5:
+            return 4.0 / 5.0;
+        case CSVideoCropAspect4_3:
+            return 4.0 / 3.0;
+        case CSVideoCropAspect21_9:
+            return 21.0 / 9.0;
         case CSVideoCropAspectOriginal:
             return self.videoNaturalSize.width / MAX(1.0, self.videoNaturalSize.height);
         case CSVideoCropAspectFreeform:
         default:
             return 0.0;
+    }
+}
+
+- (NSString *)aspectRatioTitle {
+    switch (self.aspectPreset) {
+        case CSVideoCropAspect16_9: return @"16:9 Landscape";
+        case CSVideoCropAspect9_16: return @"9:16 Portrait / Reels";
+        case CSVideoCropAspect1_1:  return @"1:1 Square";
+        case CSVideoCropAspect4_5:  return @"4:5 Social";
+        case CSVideoCropAspect4_3:  return @"4:3 Classic";
+        case CSVideoCropAspect21_9: return @"21:9 Cinema";
+        case CSVideoCropAspectOriginal: return @"Original Ratio";
+        case CSVideoCropAspectFreeform:
+        default: {
+            CGRect px = [self pixelCropRect];
+            if (px.size.height > 0) {
+                CGFloat r = px.size.width / px.size.height;
+                return [NSString stringWithFormat:@"%.2f:1 Free", r];
+            }
+            return @"Freeform";
+        }
+    }
+}
+
+- (void)centerCropInVideo {
+    CGFloat normW = _normalizedCropRect.size.width;
+    CGFloat normH = _normalizedCropRect.size.height;
+    CGFloat normX = (1.0 - normW) / 2.0;
+    CGFloat normY = (1.0 - normH) / 2.0;
+    _normalizedCropRect = CGRectMake(MAX(0.0, normX), MAX(0.0, normY), normW, normH);
+    self.needsDisplay = YES;
+    if (self.onCropChanged) {
+        self.onCropChanged([self pixelCropRect]);
+    }
+}
+
+- (void)swapOrientation {
+    // If set to 16:9, toggle to 9:16
+    if (self.aspectPreset == CSVideoCropAspect16_9) {
+        self.aspectPreset = CSVideoCropAspect9_16;
+        return;
+    }
+    if (self.aspectPreset == CSVideoCropAspect9_16) {
+        self.aspectPreset = CSVideoCropAspect16_9;
+        return;
+    }
+
+    CGFloat natW = MAX(1.0, self.videoNaturalSize.width);
+    CGFloat natH = MAX(1.0, self.videoNaturalSize.height);
+    CGFloat pixelW = _normalizedCropRect.size.width * natW;
+    CGFloat pixelH = _normalizedCropRect.size.height * natH;
+
+    CGFloat newPixelW = pixelH;
+    CGFloat newPixelH = pixelW;
+    if (newPixelW > natW) {
+        CGFloat s = natW / newPixelW;
+        newPixelW = natW;
+        newPixelH *= s;
+    }
+    if (newPixelH > natH) {
+        CGFloat s = natH / newPixelH;
+        newPixelH = natH;
+        newPixelW *= s;
+    }
+
+    CGFloat normW = newPixelW / natW;
+    CGFloat normH = newPixelH / natH;
+    CGFloat normX = (_normalizedCropRect.origin.x + _normalizedCropRect.size.width / 2.0) - normW / 2.0;
+    CGFloat normY = (_normalizedCropRect.origin.y + _normalizedCropRect.size.height / 2.0) - normH / 2.0;
+    normX = MIN(MAX(normX, 0.0), 1.0 - normW);
+    normY = MIN(MAX(normY, 0.0), 1.0 - normH);
+
+    _normalizedCropRect = CGRectMake(normX, normY, normW, normH);
+    if (self.aspectPreset != CSVideoCropAspect1_1) {
+        _aspectPreset = CSVideoCropAspectFreeform;
+    }
+    self.needsDisplay = YES;
+    if (self.onCropChanged) {
+        self.onCropChanged([self pixelCropRect]);
+    }
+}
+
+- (void)setPixelCropSize:(NSSize)size {
+    CGFloat natW = MAX(1.0, self.videoNaturalSize.width);
+    CGFloat natH = MAX(1.0, self.videoNaturalSize.height);
+
+    CGFloat w = MIN(MAX(size.width, 32.0), natW);
+    CGFloat h = MIN(MAX(size.height, 32.0), natH);
+
+    CGFloat normW = w / natW;
+    CGFloat normH = h / natH;
+    CGFloat normX = (1.0 - normW) / 2.0;
+    CGFloat normY = (1.0 - normH) / 2.0;
+
+    _normalizedCropRect = CGRectMake(MAX(0.0, normX), MAX(0.0, normY), normW, normH);
+    _aspectPreset = CSVideoCropAspectFreeform;
+    self.needsDisplay = YES;
+    if (self.onCropChanged) {
+        self.onCropChanged([self pixelCropRect]);
     }
 }
 
@@ -190,15 +295,13 @@ typedef NS_ENUM(NSInteger, CSCropDragHandle) {
     // Snap to even dimensions for video codecs (H.264)
     NSInteger evenW = MAX(32, (NSInteger)llround(pw / 2.0) * 2);
     NSInteger evenH = MAX(32, (NSInteger)llround(ph / 2.0) * 2);
+    evenW = MIN(evenW, (NSInteger)floor(natW / 2.0) * 2);
+    evenH = MIN(evenH, (NSInteger)floor(natH / 2.0) * 2);
     NSInteger evenX = (NSInteger)llround(px / 2.0) * 2;
     NSInteger evenY = (NSInteger)llround(py / 2.0) * 2;
 
-    if (evenX + evenW > (NSInteger)natW) {
-        evenX = MAX(0, (NSInteger)natW - evenW);
-    }
-    if (evenY + evenH > (NSInteger)natH) {
-        evenY = MAX(0, (NSInteger)natH - evenH);
-    }
+    evenX = MIN(MAX(evenX, 0), MAX(0, (NSInteger)natW - evenW));
+    evenY = MIN(MAX(evenY, 0), MAX(0, (NSInteger)natH - evenH));
     return CGRectMake(evenX, evenY, evenW, evenH);
 }
 
@@ -216,6 +319,7 @@ typedef NS_ENUM(NSInteger, CSCropDragHandle) {
         return;
     }
     _normalizedCropRect = newRect;
+    self.dragInitialCropRect = newRect;
     self.needsDisplay = YES;
 }
 
@@ -359,7 +463,6 @@ typedef NS_ENUM(NSInteger, CSCropDragHandle) {
         CGFloat normX = MIN(MAX((loc.x - vRect.origin.x) / vRect.size.width, 0.0), 1.0);
         CGFloat normY = MIN(MAX(1.0 - (loc.y - vRect.origin.y) / vRect.size.height, 0.0), 1.0);
         _normalizedCropRect = CGRectMake(normX, normY, 0.01, 0.01);
-        self.dragInitialCropRect = _normalizedCropRect;
         self.activeHandle = CSCropDragHandleBottomRight;
         self.needsDisplay = YES;
     } else if (self.activeHandle == CSCropDragHandleMove) {
@@ -396,6 +499,23 @@ typedef NS_ENUM(NSInteger, CSCropDragHandle) {
             y += deltaY;
             x = MIN(MAX(x, 0.0), 1.0 - w);
             y = MIN(MAX(y, 0.0), 1.0 - h);
+
+            // Magnetic snap to center
+            CGFloat midX = x + w / 2.0;
+            if (fabs(midX - 0.5) < 0.016) {
+                x = 0.5 - w / 2.0;
+                self.snappedCenterX = YES;
+            } else {
+                self.snappedCenterX = NO;
+            }
+
+            CGFloat midY = y + h / 2.0;
+            if (fabs(midY - 0.5) < 0.016) {
+                y = 0.5 - h / 2.0;
+                self.snappedCenterY = YES;
+            } else {
+                self.snappedCenterY = NO;
+            }
             break;
         }
         case CSCropDragHandleTopLeft: {
@@ -485,8 +605,20 @@ typedef NS_ENUM(NSInteger, CSCropDragHandle) {
         [super mouseUp:event];
         return;
     }
+    // If user clicked or dragged so little that the resulting box is degenerate (< 4% dimension),
+    // restore the previous crop rect, or full frame if previous was also invalid.
+    if (_normalizedCropRect.size.width < 0.04 || _normalizedCropRect.size.height < 0.04) {
+        if (self.dragInitialCropRect.size.width >= 0.04 && self.dragInitialCropRect.size.height >= 0.04) {
+            _normalizedCropRect = self.dragInitialCropRect;
+        } else {
+            _normalizedCropRect = CGRectMake(0.0, 0.0, 1.0, 1.0);
+        }
+    }
     self.activeHandle = CSCropDragHandleNone;
+    self.snappedCenterX = NO;
+    self.snappedCenterY = NO;
     [self cursorUpdate:event];
+    self.needsDisplay = YES;
     if (self.onCropChanged) {
         self.onCropChanged([self pixelCropRect]);
     }
@@ -512,7 +644,31 @@ typedef NS_ENUM(NSInteger, CSCropDragHandle) {
     [[NSColor colorWithCalibratedWhite:0.0 alpha:0.62] setFill];
     [outerPath fill];
 
-    // 2. Rule of thirds grid lines inside crop box
+    // 2. Magnetic center guide lines
+    if (self.snappedCenterX) {
+        CGFloat centerX = floor(vRect.origin.x + vRect.size.width * 0.5);
+        NSBezierPath *guide = [NSBezierPath bezierPath];
+        [guide moveToPoint:NSMakePoint(centerX, NSMinY(vRect))];
+        [guide lineToPoint:NSMakePoint(centerX, NSMaxY(vRect))];
+        CGFloat dash[2] = {5.0, 3.0};
+        [guide setLineDash:dash count:2 phase:0.0];
+        guide.lineWidth = 1.5;
+        [[CSTheme accent] setStroke];
+        [guide stroke];
+    }
+    if (self.snappedCenterY) {
+        CGFloat centerY = floor(vRect.origin.y + vRect.size.height * 0.5);
+        NSBezierPath *guide = [NSBezierPath bezierPath];
+        [guide moveToPoint:NSMakePoint(NSMinX(vRect), centerY)];
+        [guide lineToPoint:NSMakePoint(NSMaxX(vRect), centerY)];
+        CGFloat dash[2] = {5.0, 3.0};
+        [guide setLineDash:dash count:2 phase:0.0];
+        guide.lineWidth = 1.5;
+        [[CSTheme accent] setStroke];
+        [guide stroke];
+    }
+
+    // 3. Rule of thirds grid lines inside crop box
     NSBezierPath *grid = [NSBezierPath bezierPath];
     grid.lineWidth = 1.0;
     CGFloat colW = crop.size.width / 3.0;
@@ -528,47 +684,105 @@ typedef NS_ENUM(NSInteger, CSCropDragHandle) {
     [[NSColor colorWithWhite:1.0 alpha:0.25] setStroke];
     [grid stroke];
 
-    // 3. Crisp border
+    // 4. Clean border
     NSBezierPath *border = [NSBezierPath bezierPathWithRect:crop];
-    border.lineWidth = 2.0;
+    border.lineWidth = 1.5;
     [[CSTheme accent] setStroke];
     [border stroke];
 
-    // 4. Handles: 4 corners + 4 edge midpoints
-    CGFloat handleR = 5.0;
-    NSColor *handleFill = [CSTheme accent];
-    NSColor *handleStroke = [NSColor whiteColor];
+    // 5. Professional L-shaped corner bracket handles
+    CGFloat arm = MIN(18.0, MIN(crop.size.width, crop.size.height) * 0.45);
+    CGFloat cornerW = 3.5;
+    NSColor *handleColor = [NSColor whiteColor];
+    NSColor *accentColor = [CSTheme accent];
 
-    NSPoint points[8] = {
-        NSMakePoint(NSMinX(crop), NSMaxY(crop)), // TL
-        NSMakePoint(NSMidX(crop), NSMaxY(crop)), // Top
-        NSMakePoint(NSMaxX(crop), NSMaxY(crop)), // TR
-        NSMakePoint(NSMaxX(crop), NSMidY(crop)), // Right
-        NSMakePoint(NSMaxX(crop), NSMinY(crop)), // BR
-        NSMakePoint(NSMidX(crop), NSMinY(crop)), // Bottom
-        NSMakePoint(NSMinX(crop), NSMinY(crop)), // BL
-        NSMakePoint(NSMinX(crop), NSMidY(crop))  // Left
+    // Top-Left L-bracket
+    NSBezierPath *tl = [NSBezierPath bezierPath];
+    [tl moveToPoint:NSMakePoint(NSMinX(crop), NSMaxY(crop) - arm)];
+    [tl lineToPoint:NSMakePoint(NSMinX(crop), NSMaxY(crop))];
+    [tl lineToPoint:NSMakePoint(NSMinX(crop) + arm, NSMaxY(crop))];
+    tl.lineWidth = cornerW;
+    tl.lineCapStyle = NSLineCapStyleRound;
+    tl.lineJoinStyle = NSLineJoinStyleMiter;
+    [accentColor setStroke];
+    [tl stroke];
+    tl.lineWidth = 2.0;
+    [handleColor setStroke];
+    [tl stroke];
+
+    // Top-Right L-bracket
+    NSBezierPath *tr = [NSBezierPath bezierPath];
+    [tr moveToPoint:NSMakePoint(NSMaxX(crop) - arm, NSMaxY(crop))];
+    [tr lineToPoint:NSMakePoint(NSMaxX(crop), NSMaxY(crop))];
+    [tr lineToPoint:NSMakePoint(NSMaxX(crop), NSMaxY(crop) - arm)];
+    tr.lineWidth = cornerW;
+    tr.lineCapStyle = NSLineCapStyleRound;
+    tr.lineJoinStyle = NSLineJoinStyleMiter;
+    [accentColor setStroke];
+    [tr stroke];
+    tr.lineWidth = 2.0;
+    [handleColor setStroke];
+    [tr stroke];
+
+    // Bottom-Right L-bracket
+    NSBezierPath *br = [NSBezierPath bezierPath];
+    [br moveToPoint:NSMakePoint(NSMaxX(crop), NSMinY(crop) + arm)];
+    [br lineToPoint:NSMakePoint(NSMaxX(crop), NSMinY(crop))];
+    [br lineToPoint:NSMakePoint(NSMaxX(crop) - arm, NSMinY(crop))];
+    br.lineWidth = cornerW;
+    br.lineCapStyle = NSLineCapStyleRound;
+    br.lineJoinStyle = NSLineJoinStyleMiter;
+    [accentColor setStroke];
+    [br stroke];
+    br.lineWidth = 2.0;
+    [handleColor setStroke];
+    [br stroke];
+
+    // Bottom-Left L-bracket
+    NSBezierPath *bl = [NSBezierPath bezierPath];
+    [bl moveToPoint:NSMakePoint(NSMinX(crop) + arm, NSMinY(crop))];
+    [bl lineToPoint:NSMakePoint(NSMinX(crop), NSMinY(crop))];
+    [bl lineToPoint:NSMakePoint(NSMinX(crop), NSMinY(crop) + arm)];
+    bl.lineWidth = cornerW;
+    bl.lineCapStyle = NSLineCapStyleRound;
+    bl.lineJoinStyle = NSLineJoinStyleMiter;
+    [accentColor setStroke];
+    [bl stroke];
+    bl.lineWidth = 2.0;
+    [handleColor setStroke];
+    [bl stroke];
+
+    // 6. Midpoint pill grips (Top, Bottom, Left, Right)
+    CGFloat pillLen = 18.0;
+    CGFloat pillThick = 5.0;
+    NSRect pills[4] = {
+        NSMakeRect(NSMidX(crop) - pillLen / 2.0, NSMaxY(crop) - pillThick / 2.0, pillLen, pillThick), // Top
+        NSMakeRect(NSMidX(crop) - pillLen / 2.0, NSMinY(crop) - pillThick / 2.0, pillLen, pillThick), // Bottom
+        NSMakeRect(NSMinX(crop) - pillThick / 2.0, NSMidY(crop) - pillLen / 2.0, pillThick, pillLen), // Left
+        NSMakeRect(NSMaxX(crop) - pillThick / 2.0, NSMidY(crop) - pillLen / 2.0, pillThick, pillLen)  // Right
     };
-
-    for (int i = 0; i < 8; i++) {
-        NSRect hr = NSMakeRect(points[i].x - handleR, points[i].y - handleR, handleR * 2.0, handleR * 2.0);
-        NSBezierPath *hp = [NSBezierPath bezierPathWithOvalInRect:hr];
-        [handleFill setFill];
-        [hp fill];
-        [handleStroke setStroke];
-        hp.lineWidth = 1.6;
-        [hp stroke];
+    for (int i = 0; i < 4; i++) {
+        NSBezierPath *pill = [NSBezierPath bezierPathWithRoundedRect:pills[i] xRadius:2.5 yRadius:2.5];
+        [accentColor setFill];
+        [pill fill];
+        [handleColor setStroke];
+        pill.lineWidth = 1.0;
+        [pill stroke];
     }
 
-    // 5. Dimension badge
+    // 7. Dimension badge
     CGRect pxRect = [self pixelCropRect];
-    NSString *badgeText = [NSString stringWithFormat:@"%ld × %ld px", (long)pxRect.size.width, (long)pxRect.size.height];
+    CGFloat pct = (pxRect.size.width * pxRect.size.height) / MAX(1.0, (self.videoNaturalSize.width * self.videoNaturalSize.height)) * 100.0;
+    NSString *aspectStr = [self aspectRatioTitle];
+    NSString *badgeText = [NSString stringWithFormat:@"%ld × %ld px  ·  %@  (%.0f%%)",
+                           (long)pxRect.size.width, (long)pxRect.size.height, aspectStr, pct];
+
     NSDictionary *attr = @{
         NSFontAttributeName: [NSFont monospacedDigitSystemFontOfSize:11.0 weight:NSFontWeightSemibold],
         NSForegroundColorAttributeName: [NSColor whiteColor]
     };
     NSSize textSize = [badgeText sizeWithAttributes:attr];
-    CGFloat badgeW = textSize.width + 16.0;
+    CGFloat badgeW = textSize.width + 18.0;
     CGFloat badgeH = textSize.height + 8.0;
 
     CGFloat badgeX = floor(NSMidX(crop) - badgeW / 2.0);
@@ -584,13 +798,13 @@ typedef NS_ENUM(NSInteger, CSCropDragHandle) {
 
     NSRect badgeRect = NSMakeRect(badgeX, badgeY, badgeW, badgeH);
     NSBezierPath *badgeBg = [NSBezierPath bezierPathWithRoundedRect:badgeRect xRadius:6.0 yRadius:6.0];
-    [[[NSColor blackColor] colorWithAlphaComponent:0.80] setFill];
+    [[[NSColor blackColor] colorWithAlphaComponent:0.82] setFill];
     [badgeBg fill];
-    [[[CSTheme accent] colorWithAlphaComponent:0.80] setStroke];
+    [[[CSTheme accent] colorWithAlphaComponent:0.85] setStroke];
     badgeBg.lineWidth = 1.0;
     [badgeBg stroke];
 
-    [badgeText drawAtPoint:NSMakePoint(badgeX + 8.0, badgeY + 4.0) withAttributes:attr];
+    [badgeText drawAtPoint:NSMakePoint(badgeX + 9.0, badgeY + 4.0) withAttributes:attr];
 }
 
 @end

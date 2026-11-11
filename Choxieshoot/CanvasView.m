@@ -115,7 +115,7 @@ typedef NS_ENUM(NSInteger, CSDragHandle) {
     [self cancelActiveTextEditor];
     _backgroundImage = nil;
     [self.history removeAllObjects];
-    [self.annotations removeAllObjects];
+    [_annotations removeAllObjects];
     self.previewAnnotation = nil;
     self.ocrObservations = nil;
     self.ocrBarcodes = nil;
@@ -218,11 +218,17 @@ typedef NS_ENUM(NSInteger, CSDragHandle) {
     self.selectedAnnotationIndex = NSNotFound;
 }
 
+- (void)clearPreviewAnnotation {
+    self.previewAnnotation = nil;
+    self.dragging = NO;
+    [self setNeedsDisplay:YES];
+}
+
 - (void)deleteSelectedAnnotation {
     if (self.selectedAnnotationIndex != NSNotFound &&
         self.selectedAnnotationIndex >= 0 &&
         self.selectedAnnotationIndex < (NSInteger)self.annotations.count) {
-        [self.annotations removeObjectAtIndex:(NSUInteger)self.selectedAnnotationIndex];
+        [_annotations removeObjectAtIndex:(NSUInteger)self.selectedAnnotationIndex];
         self.selectedAnnotationIndex = NSNotFound;
         [self recordSnapshot];
         [self setNeedsDisplay:YES];
@@ -444,7 +450,7 @@ typedef NS_ENUM(NSInteger, CSDragHandle) {
 }
 
 - (void)addAnnotation:(Annotation *)annotation {
-    [self.annotations addObject:annotation];
+    [_annotations addObject:annotation];
     [self recordSnapshot];
     [self setNeedsDisplay:YES];
 }
@@ -540,6 +546,7 @@ typedef NS_ENUM(NSInteger, CSDragHandle) {
     _backgroundImage = croppedImage;
     [self setFrameSize:clamped.size];
     [self recordSnapshot];
+    self.currentTool = ToolTypeSelect;
     if ([self.delegate respondsToSelector:@selector(canvasView:didResizeCanvasToImage:)]) {
         [self.delegate canvasView:self didResizeCanvasToImage:croppedImage];
     }

@@ -8,7 +8,9 @@ typedef NS_ENUM(NSInteger, CSVideoCropAspect) {
     CSVideoCropAspect16_9     = 2,
     CSVideoCropAspect4_3      = 3,
     CSVideoCropAspect1_1      = 4,
-    CSVideoCropAspect9_16     = 5
+    CSVideoCropAspect9_16     = 5,
+    CSVideoCropAspect4_5      = 6,
+    CSVideoCropAspect21_9     = 7
 };
 
 /// Interactive spatial crop overlay positioned above the video player view.
@@ -32,14 +34,29 @@ typedef NS_ENUM(NSInteger, CSVideoCropAspect) {
 /// Sets the crop rectangle from source video pixel coordinates.
 - (void)setPixelCropRect:(CGRect)pixelRect;
 
+/// Sets a target pixel size centered in the video.
+- (void)setPixelCropSize:(NSSize)size;
+
 /// Resets the crop rectangle to the full video dimensions.
 - (void)resetToFullVideo;
+
+/// Centers the current crop rectangle inside the video bounds.
+- (void)centerCropInVideo;
+
+/// Swaps aspect ratio orientation (e.g. 16:9 Landscape <-> 9:16 Portrait).
+- (void)swapOrientation;
+
+/// Returns a human-friendly string for the current aspect ratio.
+- (NSString *)aspectRatioTitle;
 
 /// Returns YES if the current crop differs meaningfully from the full video frame.
 - (BOOL)isCropped;
 
 /// Computes the letterboxed / pillarboxed display frame of the video inside this view's bounds.
 - (NSRect)videoDisplayRect;
+
+/// Computes the display rect of the crop box in view coordinates (bottom-left origin).
+- (NSRect)displayCropRect;
 
 @end
 

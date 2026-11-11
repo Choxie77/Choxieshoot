@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build Choxieshoot into a self-contained macOS .app bundle.
+# Build Choxieshoot into a self-contained macOS .app bundle and DMG installer.
 # Usage: ./build.sh
 set -euo pipefail
 
@@ -11,10 +11,12 @@ CONTENTS="${BUNDLE}/Contents"
 MACOS_DIR="${CONTENTS}/MacOS"
 RESOURCES_DIR="${CONTENTS}/Resources"
 
-rm -rf "${BUNDLE}" "build/${APP_NAME} "*.app
+VERSION=$(grep -A1 'CFBundleShortVersionString' Choxieshoot/Info.plist | grep '<string>' | sed -E 's/.*<string>(.*)<\/string>/\1/')
+
+rm -rf "${BUNDLE}" "build/${APP_NAME} "*.app "build/${APP_NAME}.dmg"
 mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
 
-echo "==> Compiling Objective-C sources…"
+echo "==> Compiling Objective-C sources (v${VERSION})…"
 clang \
   -fobjc-arc \
   -fblocks \
@@ -63,9 +65,25 @@ done
 if [ -x "${LSREGISTER}" ]; then
   "${LSREGISTER}" -f "$(pwd)/${BUNDLE}" >/dev/null 2>&1 || true
 fi
-ditto -c -k --sequesterRsrc --keepParent "${BUNDLE}" "build/${APP_NAME}-1.7.zip"
-cp -f "build/${APP_NAME}-1.7.zip" "build/${APP_NAME}-1.6.zip"
 
-echo "==> Built ${BUNDLE}"
-echo "    Open it with: open \"${BUNDLE}\""
+echo "==> Creating release zip archives…"
+ditto -c -k --sequesterRsrc --keepParent "${BUNDLE}" "build/${APP_NAME}-${VERSION}.zip"
+cp -f "build/${APP_NAME}-${VERSION}.zip" "build/${APP_NAME}.zip"
+
+echo "==> Creating drag-and-drop DMG installer…"
+DMG_STAGE="build/dmg_stage"
+rm -rf "${DMG_STAGE}"
+mkdir -p "${DMG_STAGE}"
+cp -R "${BUNDLE}" "${DMG_STAGE}/"
+ln -s /Applications "${DMG_STAGE}/Applications"
+hdiutil create -volname "${APP_NAME}" -srcfolder "${DMG_STAGE}" -ov -format UDZO "build/${APP_NAME}.dmg" >/dev/null 2>&1 || {
+  echo "warning: DMG creation failed (hdiutil non-fatal)"
+}
+rm -rf "${DMG_STAGE}"
+
+echo "==> Built ${BUNDLE} (v${VERSION})"
+echo "    App bundle:   ${BUNDLE}"
+echo "    Release zip:  build/${APP_NAME}-${VERSION}.zip"
+echo "    Installer:    build/${APP_NAME}.dmg"
+echo "    Run app:      open \"${BUNDLE}\""
 echo "    Self-test:    \"${MACOS_DIR}/${APP_NAME}\" --selftest"
